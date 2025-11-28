@@ -27,7 +27,7 @@ export default defineConfig({
     target: 'esnext',
     outDir: 'dist',
     sourcemap: false,
-    minify: 'terser',
+    minify: true, // 使用 esbuild（默认，更快，无需额外依赖）
     rollupOptions: {
       output: {
         manualChunks: undefined,

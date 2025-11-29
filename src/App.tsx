@@ -175,14 +175,6 @@ export default function App() {
             } 
           />
           <Route 
-            path="admin/users/:userId" 
-            element={
-              <Suspense fallback={<PageLoader />}>
-                <UserDetail />
-              </Suspense>
-            } 
-          />
-          <Route 
             path="admin/users/:id" 
             element={
               <Suspense fallback={<PageLoader />}>

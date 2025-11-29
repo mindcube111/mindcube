@@ -44,8 +44,8 @@ export function generateToken(payload, env = {}) {
   
   // 简单的 HMAC-SHA256 签名（实际生产环境应使用 crypto API）
   const signature = base64UrlEncode(
-      JSON.stringify({ header: encodedHeader, payload: encodedPayload, secret: getJWTSecret(env) })
-    )
+    JSON.stringify({ header: encodedHeader, payload: encodedPayload, secret: getJWTSecret(env) })
+  )
 
   return `${encodedHeader}.${encodedPayload}.${signature}`
 }

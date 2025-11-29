@@ -320,9 +320,6 @@ async function handleChangePassword(request, userId, db) {
   return successResponse(null, '密码修改成功')
 }
 
-// 继续实现其他路由处理器...
-// 为了简化，我会在后续文件中分别实现
-
 /**
  * 用户路由处理（管理员）
  */

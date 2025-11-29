@@ -1,0 +1,28 @@
+# Cloudflare Pages 配置
+# 这个文件用于配置 Cloudflare Workers 和 Pages Functions
+
+name = "psychological-assessment-platform"
+compatibility_date = "2024-01-01"
+
+# KV 命名空间配置
+# 注意：需要在 Cloudflare Dashboard 中创建 KV 命名空间，然后使用以下命令绑定：
+# wrangler kv:namespace create "DB"
+# wrangler kv:namespace create "DB" --preview  # 用于预览环境
+
+# 生产环境 KV 绑定（需要替换为实际的命名空间 ID）
+# [[kv_namespaces]]
+# binding = "DB"
+# id = "your-kv-namespace-id"
+
+# 预览环境 KV 绑定
+# [[kv_namespaces]]
+# binding = "DB"
+# preview_id = "your-preview-kv-namespace-id"
+
+# 环境变量（敏感信息应通过 Cloudflare Dashboard 的 Environment Variables 配置）
+[env.production.vars]
+# JWT_SECRET = "your-production-jwt-secret"
+
+[env.preview.vars]
+# JWT_SECRET = "your-preview-jwt-secret"
+

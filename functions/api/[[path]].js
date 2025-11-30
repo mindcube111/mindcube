@@ -74,12 +74,20 @@ export async function onRequest(context) {
     // 路由分发
     const response = await routeHandler(pathSegments, method, request, db, env)
     
-    // 添加 CORS 头
-    response.headers.set('Access-Control-Allow-Origin', '*')
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    // 添加 CORS 头（创建新的 Response，因为 headers 可能不可变）
+    const headers = new Headers(response.headers)
+    headers.set('Access-Control-Allow-Origin', '*')
+    headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
     
-    return response
+    // 处理 response body（可能是 ReadableStream 或已读取的数据）
+    const body = response.body ? response.body : null
+    
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: headers,
+    })
   } catch (error) {
     console.error('API Error:', error)
     return errorResponse(error.message || '服务器内部错误', 500, 500)
@@ -90,55 +98,60 @@ export async function onRequest(context) {
  * 路由处理器
  */
 async function routeHandler(pathSegments, method, request, db, env) {
-  const [resource, action, ...rest] = pathSegments
+  try {
+    const [resource, action, ...rest] = pathSegments
 
-  // 认证相关路由（不需要认证）
-  if (resource === 'auth') {
-    return handleAuthRoutes(action, method, request, db, env)
-  }
+    // 认证相关路由（不需要认证）
+    if (resource === 'auth') {
+      return await handleAuthRoutes(action, method, request, db, env)
+    }
 
-  // 公开的问卷列表（不需要认证）
-  if (resource === 'questionnaires' && action === 'available') {
-    return handleAvailableQuestionnaires(db)
-  }
+    // 公开的问卷列表（不需要认证）
+    if (resource === 'questionnaires' && action === 'available') {
+      return await handleAvailableQuestionnaires(db)
+    }
 
-  // 其他路由需要认证
-  const authResult = await verifyAuth(request, env)
-  if (!authResult.valid) {
-    return authResult.error
-  }
+    // 其他路由需要认证
+    const authResult = await verifyAuth(request, env)
+    if (!authResult.valid) {
+      return authResult.error
+    }
 
-  const userId = authResult.userId
-  const userRole = authResult.userRole
+    const userId = authResult.userId
+    const userRole = authResult.userRole
 
-  // 根据资源类型路由
-  switch (resource) {
-    case 'auth':
-      return handleAuthRoutes(action, method, request, db, env, userId)
-    
-    case 'users':
-      if (userRole !== 'admin') {
-        return unauthorizedResponse('需要管理员权限')
-      }
-      return handleUserRoutes(action, rest, method, request, db, userId)
-    
-    case 'links':
-      return handleLinkRoutes(action, rest, method, request, db, userId, userRole)
-    
-    case 'questionnaires':
-      if (userRole !== 'admin') {
-        return unauthorizedResponse('需要管理员权限')
-      }
-      return handleQuestionnaireRoutes(action, rest, method, request, db)
-    
-    case 'dashboard':
-      return handleDashboardRoutes(action, method, request, db, userId)
-    
-    case 'notifications':
-      return handleNotificationRoutes(action, rest, method, request, db, userId)
-    
-    default:
-      return notFoundResponse('API 路由不存在')
+    // 根据资源类型路由
+    switch (resource) {
+      case 'auth':
+        return await handleAuthRoutes(action, method, request, db, env, userId)
+      
+      case 'users':
+        if (userRole !== 'admin') {
+          return unauthorizedResponse('需要管理员权限')
+        }
+        return await handleUserRoutes(action, rest, method, request, db, userId)
+      
+      case 'links':
+        return await handleLinkRoutes(action, rest, method, request, db, userId, userRole)
+      
+      case 'questionnaires':
+        if (userRole !== 'admin') {
+          return unauthorizedResponse('需要管理员权限')
+        }
+        return await handleQuestionnaireRoutes(action, rest, method, request, db)
+      
+      case 'dashboard':
+        return await handleDashboardRoutes(action, method, request, db, userId)
+      
+      case 'notifications':
+        return await handleNotificationRoutes(action, rest, method, request, db, userId)
+      
+      default:
+        return notFoundResponse('API 路由不存在')
+    }
+  } catch (error) {
+    console.error('Route Handler Error:', error)
+    return errorResponse(error.message || '路由处理错误', 500, 500)
   }
 }
 
@@ -972,4 +985,5 @@ async function handleNotificationRoutes(action, rest, method, request, db, userI
 
   return notFoundResponse('通知路由不存在')
 }
+
 

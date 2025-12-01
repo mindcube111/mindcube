@@ -1,23 +1,51 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type React from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { LogIn, Lock, User, AlertCircle, Home } from 'lucide-react'
+import { LogIn, Lock, User, AlertCircle, Home, RefreshCw } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { generateCaptcha, verifyCaptcha, type CaptchaChallenge } from '@/utils/captcha'
 
 export default function Login() {
   const navigate = useNavigate()
   const { login, isLoading } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [captcha, setCaptcha] = useState<CaptchaChallenge>(generateCaptcha())
+  const [captchaAnswer, setCaptchaAnswer] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // 刷新验证码
+  const refreshCaptcha = () => {
+    setCaptcha(generateCaptcha())
+    setCaptchaAnswer('')
+  }
+
+  // 页面加载时生成验证码
+  useEffect(() => {
+    refreshCaptcha()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    // 验证验证码
+    if (!captchaAnswer.trim()) {
+      setError('请输入验证码')
+      return
+    }
+
+    const userAnswer = parseInt(captchaAnswer.trim(), 10)
+    if (!verifyCaptcha(userAnswer, captcha.answer)) {
+      setError('验证码错误，请重新输入')
+      refreshCaptcha()
+      return
+    }
+
     setIsSubmitting(true)
 
-    const result = await login(username, password)
+    const result = await login(username, password, captchaAnswer, captcha.id)
     setIsSubmitting(false)
 
     if (result.success) {
@@ -95,6 +123,40 @@ export default function Login() {
                   required
                   disabled={isSubmitting || isLoading}
                 />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                验证码
+              </label>
+              <div className="flex gap-3">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={captchaAnswer}
+                    onChange={(e) => setCaptchaAnswer(e.target.value)}
+                    className="input"
+                    placeholder="计算结果"
+                    required
+                    disabled={isSubmitting || isLoading}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-600">
+                  <span className="text-lg font-mono font-bold text-gray-800 dark:text-gray-200 whitespace-nowrap">
+                    {captcha.question}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={refreshCaptcha}
+                    disabled={isSubmitting || isLoading}
+                    className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="刷新验证码"
+                  >
+                    <RefreshCw className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                  </button>
+                </div>
               </div>
             </div>
 

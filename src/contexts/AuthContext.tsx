@@ -18,6 +18,8 @@ interface RegisterPayload {
   email: string
   password: string
   name?: string
+  captchaAnswer?: string
+  captchaId?: string
 }
 
 interface RegisterResult {
@@ -31,7 +33,7 @@ interface AuthContextType {
   isLoading: boolean
   accounts: User[]
   accountsLoading: boolean
-  login: (username: string, password: string) => Promise<{ success: boolean; message?: string }>
+  login: (username: string, password: string, captchaAnswer?: string, captchaId?: string) => Promise<{ success: boolean; message?: string }>
   register: (payload: RegisterPayload) => Promise<RegisterResult>
   logout: () => Promise<void>
   fetchAccounts: () => Promise<void>
@@ -86,11 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (
     username: string,
-    password: string
+    password: string,
+    captchaAnswer?: string,
+    captchaId?: string
   ): Promise<{ success: boolean; message?: string }> => {
     setIsLoading(true)
     try {
-      const response = await apiLogin({ username, password })
+      const response = await apiLogin({ username, password, captchaAnswer, captchaId })
       if (response.success && response.data) {
         const userWithToken: User = {
           ...response.data.user,

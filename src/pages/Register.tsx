@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { User, Mail, Lock, ShieldCheck } from 'lucide-react'
+import { User, Mail, Lock, ShieldCheck, RefreshCw } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { validateUsername, validateEmail, validatePassword } from '@/utils/validation'
+import { generateCaptcha, verifyCaptcha, type CaptchaChallenge } from '@/utils/captcha'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -15,10 +16,23 @@ export default function Register() {
     password: '',
     confirmPassword: '',
   })
+  const [captcha, setCaptcha] = useState<CaptchaChallenge>(generateCaptcha())
+  const [captchaAnswer, setCaptchaAnswer] = useState('')
   const [acceptTerms, setAcceptTerms] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  // 刷新验证码
+  const refreshCaptcha = () => {
+    setCaptcha(generateCaptcha())
+    setCaptchaAnswer('')
+  }
+
+  // 页面加载时生成验证码
+  useEffect(() => {
+    refreshCaptcha()
+  }, [])
 
   const handleChange = (field: keyof typeof formData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -82,6 +96,19 @@ export default function Register() {
       return
     }
 
+    // 验证验证码
+    if (!captchaAnswer.trim()) {
+      await showAlert('提示', '请输入验证码', 'warning')
+      return
+    }
+
+    const userAnswer = parseInt(captchaAnswer.trim(), 10)
+    if (!verifyCaptcha(userAnswer, captcha.answer)) {
+      await showAlert('提示', '验证码错误，请重新输入', 'warning')
+      refreshCaptcha()
+      return
+    }
+
     setIsSubmitting(true)
     setError('')
 
@@ -89,6 +116,8 @@ export default function Register() {
       username: formData.username.trim(),
       email: formData.email.trim(),
       password: formData.password,
+      captchaAnswer,
+      captchaId: captcha.id,
     })
 
     setIsSubmitting(false)
@@ -204,6 +233,40 @@ export default function Register() {
                 {fieldErrors.confirmPassword && (
                   <p className="mt-1 text-sm text-red-600">{fieldErrors.confirmPassword}</p>
                 )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                验证码
+              </label>
+              <div className="flex gap-3">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={captchaAnswer}
+                    onChange={(e) => setCaptchaAnswer(e.target.value)}
+                    className="input"
+                    placeholder="计算结果"
+                    required
+                    disabled={isSubmitting}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-600">
+                  <span className="text-lg font-mono font-bold text-gray-800 dark:text-gray-200 whitespace-nowrap">
+                    {captcha.question}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={refreshCaptcha}
+                    disabled={isSubmitting}
+                    className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="刷新验证码"
+                  >
+                    <RefreshCw className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                  </button>
+                </div>
               </div>
             </div>
 

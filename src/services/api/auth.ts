@@ -9,6 +9,8 @@ import { User } from '@/types'
 export interface LoginRequest {
   username: string
   password: string
+  captchaAnswer?: string
+  captchaId?: string
 }
 
 export interface LoginResponse {
@@ -22,6 +24,8 @@ export interface RegisterRequest {
   email: string
   password: string
   name?: string
+  captchaAnswer?: string
+  captchaId?: string
 }
 
 export interface RegisterResponse {

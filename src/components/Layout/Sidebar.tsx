@@ -26,7 +26,7 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>
   label: string
   roles?: Array<'admin' | 'user'>
-  action?: 'openPayment' | 'openPackages' // 特殊操作类型
+  action?: 'openPayment' // 特殊操作类型
   subItems?: Array<{
     path: string
     label: string
@@ -38,6 +38,7 @@ const navItems: NavItem[] = [
   { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
   { path: '/links/generate', icon: LinkIcon, label: '生成链接' },
   { path: '/links/manage', icon: LinkIcon, label: '链接管理' },
+  { path: '/packages', icon: CreditCard, label: '购买套餐' },
   { path: '/statistics', icon: BarChart3, label: '统计分析' },
   { path: '/admin/users', icon: Users, label: '用户管理', roles: ['admin'] as Array<'admin' | 'user'> },
   { path: '/notifications', icon: Bell, label: '通知中心' },
@@ -62,12 +63,6 @@ const navItems: NavItem[] = [
       { path: '/admin/audit', label: '操作日志', icon: FileText },
       { path: '/admin/backup', label: '数据备份', icon: Database },
     ],
-  },
-  {
-    icon: CreditCard,
-    label: '购买套餐',
-    roles: ['admin'] as Array<'admin' | 'user'>,
-    action: 'openPackages',
   },
 ]
 
@@ -149,18 +144,13 @@ export default function Sidebar({ onClose }: SidebarProps) {
           .map((item) => {
           const Icon = item.icon
           const hasSubItems = item.subItems && item.subItems.length > 0
-          const hasAction = item.action === 'openPayment' || item.action === 'openPackages'
+          const hasAction = item.action === 'openPayment'
           const isExpanded = expandedItems.has(item.label)
 
-          // 处理特殊操作（如打开购买套餐页面）
+          // 处理特殊操作（如打开支付页面）
           if (hasAction) {
             const handleAction = () => {
-              if (item.action === 'openPackages') {
-                // 在新标签页打开购买套餐页面
-                const packagesUrl = `${window.location.origin}/packages`
-                window.open(packagesUrl, '_blank')
-                handleNavClick()
-              } else if (item.action === 'openPayment') {
+              if (item.action === 'openPayment') {
                 // 在新标签页打开支付页面
                 const paymentUrl = `${window.location.origin}/payment`
                 window.open(paymentUrl, '_blank')

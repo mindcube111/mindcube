@@ -71,3 +71,4 @@ export function verifyCaptcha(userAnswer: string | number, correctAnswer: number
   return !isNaN(userNum) && userNum === correctAnswer
 }
 
+

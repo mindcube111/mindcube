@@ -49,7 +49,7 @@ export function errorResponse(message = '请求失败', status = 400, code) {
   const body = {
     success: false,
     message,
-    ...(typeof code === 'number' ? { code } : {}),
+    code: typeof code === 'number' ? code : status, // 确保总是有 code 字段
   }
   return jsonResponse(body, status)
 }

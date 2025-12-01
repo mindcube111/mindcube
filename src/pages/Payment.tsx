@@ -113,9 +113,10 @@ export default function Payment() {
       const data = await resp.json()
       console.log('支付接口返回:', data)
       
-      if (data.code !== 0) {
+      // 检查响应格式：后端使用 success 字段
+      if (!data.success) {
         console.error('支付接口错误:', data)
-        throw new Error(data.message || `支付配置错误 (code: ${data.code})`)
+        throw new Error(data.message || '支付接口返回错误')
       }
       
       if (!data.data?.payUrl) {

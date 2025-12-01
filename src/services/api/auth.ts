@@ -45,12 +45,6 @@ export async function login(
   })
 
   if (response.success && response.data) {
-    // 保存 token
-    apiClient.setAuthToken(response.data.token)
-    // 保存用户信息
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('user', JSON.stringify(response.data.user))
-    }
     return {
       success: true,
       data: response.data,

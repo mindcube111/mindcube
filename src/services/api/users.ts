@@ -32,6 +32,7 @@ export interface UpdateUserRequest {
   email?: string
   role?: 'admin' | 'user'
   remainingQuota?: number
+  totalQuota?: number
 }
 
 /**

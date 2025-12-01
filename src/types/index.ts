@@ -6,8 +6,15 @@ export interface User {
   name: string
   avatar?: string
   role: 'admin' | 'user'
+  status?: 'active' | 'pending' | 'disabled'
   createdAt: string
+  updatedAt?: string
   remainingQuota: number
+  totalQuota?: number
+  totalUsedQuota?: number
+  totalRecharge?: number
+  lastLoginAt?: string
+  isDefault?: boolean
   token?: string // 认证 Token（仅前端存储使用）
 }
 

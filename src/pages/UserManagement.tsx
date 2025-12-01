@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Users, Trash2, ShieldCheck, UserMinus, Plus } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -6,14 +6,23 @@ import { formatDate, formatNumber, formatCurrency } from '@/utils/formatters'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { useInputDialog } from '@/components/InputDialog'
 
-const statusStyles: Record<'active' | 'disabled', string> = {
+const statusStyles: Record<'active' | 'disabled' | 'pending', string> = {
   active: 'bg-successLight text-success border border-success/30',
   disabled: 'bg-dangerLight text-danger border-danger/30',
+  pending: 'bg-warningLight text-warning border border-warning/30',
 }
 
 export default function UserManagement() {
   const navigate = useNavigate()
-  const { user, accounts, clearCustomUsers, updateUserStatus, updateUserQuota } = useAuth()
+  const {
+    user,
+    accounts,
+    accountsLoading,
+    fetchAccounts,
+    clearCustomUsers,
+    updateUserStatus,
+    updateUserQuota,
+  } = useAuth()
   const { showConfirm, showAlert, DialogComponent } = useConfirmDialog()
   const { showInput, InputDialogComponent } = useInputDialog()
 
@@ -21,7 +30,12 @@ export default function UserManagement() {
     return <Navigate to="/dashboard" replace />
   }
 
-  const customAccounts = useMemo(() => accounts.filter((acc) => !acc.isDefault), [accounts])
+  useEffect(() => {
+    fetchAccounts()
+  }, [fetchAccounts])
+
+  const customAccounts = useMemo(() => accounts.filter((acc) => acc.role !== 'admin'), [accounts])
+  const adminAccounts = useMemo(() => accounts.filter((acc) => acc.role === 'admin'), [accounts])
 
   const handleToggleStatus = async (accountId: string, currentStatus: 'active' | 'disabled') => {
     const nextStatus = currentStatus === 'active' ? 'disabled' : 'active'
@@ -29,10 +43,15 @@ export default function UserManagement() {
       '确认操作',
       `确定要将用户状态更新为"${nextStatus === 'active' ? '启用' : '禁用'}"吗？`
     )
-    if (confirmed) {
-      updateUserStatus(accountId, nextStatus)
-      await showAlert('操作成功', `用户状态已更新为"${nextStatus === 'active' ? '启用' : '禁用'}"`, 'success')
+    if (!confirmed) {
+      return
     }
+    const result = await updateUserStatus(accountId, nextStatus)
+    await showAlert(
+      result.success ? '操作成功' : '操作失败',
+      result.message || (result.success ? '用户状态已更新' : '更新失败，请稍后重试'),
+      result.success ? 'success' : 'alert'
+    )
   }
 
   const handleClear = async () => {
@@ -45,9 +64,17 @@ export default function UserManagement() {
       '确定要清理所有注册用户数据吗？此操作无法恢复。',
       { destructive: true }
     )
-    if (confirmed) {
-      clearCustomUsers()
-      await showAlert('清理成功', '已清空注册用户数据', 'success')
+    if (!confirmed) {
+      return
+    }
+    const result = await clearCustomUsers()
+    await showAlert(
+      result.success ? '清理成功' : '清理失败',
+      result.message || (result.success ? '已清空注册用户数据' : '操作失败，请稍后重试'),
+      result.success ? 'success' : 'alert'
+    )
+    if (result.success) {
+      fetchAccounts()
     }
   }
 
@@ -81,8 +108,17 @@ export default function UserManagement() {
 
     if (input !== null && input !== '') {
       const amount = parseInt(input, 10)
-      updateUserQuota(accountId, amount)
-      await showAlert('操作成功', `已为用户 "${accountUsername}" 添加 ${formatNumber(amount)} 条额度`, 'success')
+      const result = await updateUserQuota(accountId, amount)
+      await showAlert(
+        result.success ? '操作成功' : '操作失败',
+        result.success
+          ? `已为用户 "${accountUsername}" 添加 ${formatNumber(amount)} 条额度`
+          : result.message || '额度添加失败，请稍后再试',
+        result.success ? 'success' : 'alert'
+      )
+      if (result.success) {
+        fetchAccounts()
+      }
     }
   }
 
@@ -112,8 +148,8 @@ export default function UserManagement() {
           <p className="text-3xl font-bold text-secondary-600 mt-2">{customAccounts.length}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-gray-500">默认账号</p>
-          <p className="text-3xl font-bold text-gray-600 mt-2">{accounts.length - customAccounts.length}</p>
+          <p className="text-sm text-gray-500">管理员账号</p>
+          <p className="text-3xl font-bold text-gray-600 mt-2">{adminAccounts.length}</p>
         </div>
       </div>
 
@@ -127,7 +163,11 @@ export default function UserManagement() {
         
         {/* 移动端卡片视图 */}
         <div className="block md:hidden px-4 space-y-3">
-          {accounts.map((account) => (
+          {accountsLoading && <p className="text-center text-sm text-gray-500">加载中...</p>}
+          {!accountsLoading && accounts.length === 0 && (
+            <p className="text-center text-sm text-gray-500">暂无用户数据</p>
+          )}
+          {!accountsLoading && accounts.map((account) => (
             <div
               key={account.id}
               className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600"
@@ -138,8 +178,8 @@ export default function UserManagement() {
                   <h3 className="font-semibold text-text text-sm truncate">{account.username}</h3>
                   <p className="text-xs text-gray-600 dark:text-gray-400 truncate mt-1">{account.email}</p>
                 </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusStyles[account.status]}`}>
-                  {account.status === 'active' ? '正常' : '已禁用'}
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusStyles[account.status || 'active']}`}>
+                  {account.status === 'active' ? '正常' : account.status === 'pending' ? '待审核' : '已禁用'}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
@@ -170,11 +210,11 @@ export default function UserManagement() {
                   <Plus className="w-3 h-3" />
                   添加额度
                 </button>
-                {!account.isDefault && (
+                {account.role !== 'admin' && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      handleToggleStatus(account.id, account.status)
+                      handleToggleStatus(account.id, account.status === 'active' ? 'active' : 'disabled')
                     }}
                     className={`flex items-center gap-1 text-xs ${
                       account.status === 'active'
@@ -202,6 +242,11 @@ export default function UserManagement() {
 
         {/* 桌面端表格视图 */}
         <div className="hidden md:block overflow-x-auto -mx-4 sm:-mx-6 lg:-mx-8 xl:-mx-8 px-4 sm:px-6 lg:px-8">
+          {accountsLoading ? (
+            <div className="py-10 text-center text-gray-500">用户数据加载中...</div>
+          ) : accounts.length === 0 ? (
+            <div className="py-10 text-center text-gray-500">暂无用户数据</div>
+          ) : (
           <table className="w-full">
             <thead>
               <tr className="border-b bg-muted text-text text-xs sm:text-sm">
@@ -229,7 +274,7 @@ export default function UserManagement() {
                   <td className="py-2 sm:py-3 px-2 sm:px-4 font-medium text-text text-xs sm:text-sm">{account.username}</td>
                   <td className="py-2 sm:py-3 px-2 sm:px-4 text-gray-600 text-xs sm:text-sm hidden md:table-cell">{account.email}</td>
                   <td className="py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm">{account.role === 'admin' ? '管理员' : '普通用户'}</td>
-                  <td className="py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm hidden lg:table-cell">{account.isDefault ? '系统内置' : '注册用户'}</td>
+                  <td className="py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm hidden lg:table-cell">{account.role === 'admin' ? '系统内置' : '注册用户'}</td>
                   <td className="py-2 sm:py-3 px-2 sm:px-4 text-gray-700 text-xs sm:text-sm hidden xl:table-cell">
                     {account.role === 'admin' ? (
                       <span className="text-primary-600 font-semibold">无限</span>
@@ -252,8 +297,8 @@ export default function UserManagement() {
                     )}
                   </td>
                   <td className="py-2 sm:py-3 px-2 sm:px-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusStyles[account.status]}`}>
-                      {account.status === 'active' ? '正常' : '已禁用'}
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusStyles[account.status || 'active']}`}>
+                      {account.status === 'active' ? '正常' : account.status === 'pending' ? '待审核' : '已禁用'}
                     </span>
                   </td>
                   <td className="py-2 sm:py-3 px-2 sm:px-4 text-gray-500 text-xs sm:text-sm hidden lg:table-cell">
@@ -280,11 +325,14 @@ export default function UserManagement() {
                         <span className="hidden sm:inline">添加额度</span>
                         <span className="sm:hidden">添加</span>
                       </button>
-                      {!account.isDefault && (
+                      {account.role !== 'admin' && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleToggleStatus(account.id, account.status)
+                            handleToggleStatus(
+                              account.id,
+                              account.status === 'active' ? 'active' : 'disabled'
+                            )
                           }}
                           className={`flex items-center gap-1 text-xs sm:text-sm ${
                             account.status === 'active'
@@ -311,6 +359,7 @@ export default function UserManagement() {
               ))}
             </tbody>
           </table>
+          )}
         </div>
       </div>
     </div>

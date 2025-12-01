@@ -7,7 +7,7 @@ import { validateUsername, validateEmail, validatePassword } from '@/utils/valid
 
 export default function Register() {
   const navigate = useNavigate()
-  const { register, accounts } = useAuth()
+  const { register } = useAuth()
   const { showAlert, DialogComponent } = useConfirmDialog()
   const [formData, setFormData] = useState({
     username: '',
@@ -32,35 +32,19 @@ export default function Register() {
     }
   }
 
-  const validateForm = (): boolean => {
+  const validateForm = (): { isValid: boolean; errors: Record<string, string> } => {
     const errors: Record<string, string> = {}
 
     // 验证用户名
     const usernameValidation = validateUsername(formData.username.trim())
     if (!usernameValidation.isValid) {
       errors.username = usernameValidation.message || '用户名验证失败'
-    } else {
-      // 检查用户名是否已存在
-      const usernameExists = accounts.some(
-        acc => acc.username.toLowerCase() === formData.username.trim().toLowerCase()
-      )
-      if (usernameExists) {
-        errors.username = '用户名已存在，请更换后重试'
-      }
     }
 
     // 验证邮箱
     const emailValidation = validateEmail(formData.email.trim())
     if (!emailValidation.isValid) {
       errors.email = emailValidation.message || '邮箱验证失败'
-    } else {
-      // 检查邮箱是否已存在
-      const emailExists = accounts.some(
-        acc => acc.email.toLowerCase() === formData.email.trim().toLowerCase()
-      )
-      if (emailExists) {
-        errors.email = '邮箱已被注册，请使用其他邮箱'
-      }
     }
 
     // 验证密码
@@ -77,15 +61,16 @@ export default function Register() {
     }
 
     setFieldErrors(errors)
-    return Object.keys(errors).length === 0
+    return { isValid: Object.keys(errors).length === 0, errors }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     // 表单验证
-    if (!validateForm()) {
-      const firstError = Object.values(fieldErrors)[0]
+    const validation = validateForm()
+    if (!validation.isValid) {
+      const firstError = Object.values(validation.errors)[0]
       if (firstError) {
         await showAlert('验证失败', firstError, 'warning')
       }

@@ -169,36 +169,51 @@ function md5(raw) {
 }
 
 export function md5Sign(params, key) {
+  // 步骤1：构建参数串（已按 ASCII 排序，过滤空值）
   const payload = buildSignPayload(params)
+  
+  // 步骤2：验证 KEY 不能是占位符
+  if (!key || typeof key !== 'string' || key.trim() === '') {
+    throw new Error('签名失败：商户 KEY 未配置')
+  }
+  
+  // 检查是否为占位符
+  const placeholderPatterns = ['商户KEY', '你的', 'your', 'example', 'placeholder', 'test', 'demo']
+  const isPlaceholder = placeholderPatterns.some(pattern => 
+    key.toLowerCase().includes(pattern.toLowerCase())
+  )
+  
+  if (isPlaceholder) {
+    console.error('❌ 签名错误: KEY 是占位符，无法生成正确签名', {
+      key_preview: key.substring(0, 30),
+      key_length: key.length,
+      payload_preview: payload.substring(0, 50) + '...'
+    })
+    throw new Error(`签名失败：商户 KEY 是占位符（当前值：${key.substring(0, 30)}），请配置真实密钥`)
+  }
+  
+  // 步骤3：直接拼接 KEY 到参数串末尾（无任何分隔符）
+  // 正确格式：money=1&name=...&type=alipay + KEY值
   const raw = `${payload}${key}`
   
   // 详细的签名调试日志
   console.log('=== 签名生成详情 ===', {
-    params_count: Object.keys(params).length,
-    params_keys: Object.keys(params).sort().join(', '),
-    payload_preview: payload.length > 100 ? payload.substring(0, 100) + '...' : payload,
-    payload_length: payload.length,
-    key_length: key ? key.length : 0,
-    key_preview: key ? (key.length > 10 ? key.substring(0, 6) + '...' + key.substring(key.length - 4) : key) : '未设置',
-    key_ends_with_placeholder: key && typeof key === 'string' ? key.endsWith('商户KEY') : false,
-    raw_length: raw.length,
-    raw_preview: raw.length > 150 ? raw.substring(0, 100) + '...' + raw.substring(raw.length - 20) : raw
+    step1_payload: payload.substring(0, 100) + (payload.length > 100 ? '...' : ''),
+    step2_key_length: key.length,
+    step2_key_preview: key.length > 10 ? key.substring(0, 6) + '...' + key.substring(key.length - 4) : key,
+    step3_raw_length: raw.length,
+    step3_raw_end: raw.length > 50 ? '...' + raw.substring(raw.length - 50) : raw,
+    step3_raw_ends_with_key: raw.endsWith(key),
+    step4_md5_result: '见下方'
   })
   
-  // 警告：如果 KEY 是占位符
-  if (key && (key.includes('商户KEY') || key.includes('你的'))) {
-    console.error('❌ 警告: 签名使用的 KEY 是占位符！', {
-      key_preview: key.substring(0, 20),
-      key_ends_with: key.substring(Math.max(0, key.length - 10)),
-      payload_preview: payload.substring(0, 50) + '...'
-    })
-  }
-  
-  const sign = md5(raw)
+  // 步骤4：对最终字符串进行 MD5 加密（32位小写）
+  const sign = md5(raw).toLowerCase()
   
   console.log('签名结果:', {
     sign: sign,
-    sign_length: sign.length
+    sign_length: sign.length,
+    sign_format: 'MD5 32位小写'
   })
   
   return sign
@@ -207,8 +222,13 @@ export function md5Sign(params, key) {
 export function verifyMd5Sign(params, key) {
   const { sign, sign_type, ...rest } = params
   if (!sign) return false
-  const expected = md5Sign(rest, key)
-  return String(sign).toLowerCase() === expected.toLowerCase()
+  try {
+    const expected = md5Sign(rest, key)
+    return String(sign).toLowerCase() === expected.toLowerCase()
+  } catch (error) {
+    console.error('验证签名时出错:', error.message)
+    return false
+  }
 }
 
 

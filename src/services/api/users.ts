@@ -48,7 +48,7 @@ export async function getUserList(
   if (params?.role) queryParams.append('role', params.role)
   if (params?.status) queryParams.append('status', params.status)
 
-  const endpoint = `/admin/users${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
+  const endpoint = `/users${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
   const response = await apiClient.get<UserListResponse>(endpoint)
 
   return {
@@ -64,7 +64,7 @@ export async function getUserList(
 export async function getUserById(
   userId: string
 ): Promise<{ success: boolean; data?: User; message?: string }> {
-  const response = await apiClient.get<User>(`/admin/users/${userId}`)
+  const response = await apiClient.get<User>(`/users/${userId}`)
   return {
     success: response.success,
     data: response.data,
@@ -78,7 +78,7 @@ export async function getUserById(
 export async function updateUserStatus(
   data: UpdateUserStatusRequest
 ): Promise<{ success: boolean; message?: string }> {
-  const response = await apiClient.patch(`/admin/users/${data.userId}/status`, {
+  const response = await apiClient.patch(`/users/${data.userId}/status`, {
     status: data.status,
   })
   return {
@@ -94,7 +94,7 @@ export async function updateUser(
   data: UpdateUserRequest
 ): Promise<{ success: boolean; message?: string; data?: User }> {
   const { userId, ...updateData } = data
-  const response = await apiClient.put<User>(`/admin/users/${userId}`, updateData)
+  const response = await apiClient.put<User>(`/users/${userId}`, updateData)
   return {
     success: response.success,
     message: response.message || (response.success ? '用户信息更新成功' : '用户信息更新失败'),
@@ -106,7 +106,7 @@ export async function updateUser(
  * 删除用户
  */
 export async function deleteUser(userId: string): Promise<{ success: boolean; message?: string }> {
-  const response = await apiClient.delete(`/admin/users/${userId}`)
+  const response = await apiClient.delete(`/users/${userId}`)
   return {
     success: response.success,
     message: response.message || (response.success ? '用户删除成功' : '用户删除失败'),
@@ -119,7 +119,7 @@ export async function deleteUser(userId: string): Promise<{ success: boolean; me
 export async function batchDeleteUsers(
   userIds: string[]
 ): Promise<{ success: boolean; message?: string }> {
-  const response = await apiClient.post('/admin/users/batch-delete', { userIds })
+  const response = await apiClient.post('/users/batch-delete', { userIds })
   return {
     success: response.success,
     message: response.message || (response.success ? '批量删除成功' : '批量删除失败'),
@@ -132,7 +132,7 @@ export async function batchDeleteUsers(
 export async function resetUserPassword(
   userId: string
 ): Promise<{ success: boolean; message?: string; newPassword?: string }> {
-  const response = await apiClient.post<{ newPassword: string }>(`/admin/users/${userId}/reset-password`)
+  const response = await apiClient.post<{ newPassword: string }>(`/users/${userId}/reset-password`)
   return {
     success: response.success,
     message: response.message || (response.success ? '密码重置成功' : '密码重置失败'),

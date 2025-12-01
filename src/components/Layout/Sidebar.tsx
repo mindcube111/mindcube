@@ -16,6 +16,8 @@ import {
   ChevronDown,
   ChevronUp,
   Archive,
+  CreditCard,
+  ExternalLink,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -25,6 +27,7 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>
   label: string
   roles?: Array<'admin' | 'user'>
+  action?: 'openPayment' | 'openPackages' // 特殊操作类型
   subItems?: Array<{
     path: string
     label: string
@@ -61,6 +64,12 @@ const navItems: NavItem[] = [
       { path: '/admin/audit', label: '操作日志', icon: FileText },
       { path: '/admin/backup', label: '数据备份', icon: Database },
     ],
+  },
+  {
+    icon: CreditCard,
+    label: '购买套餐',
+    roles: ['admin'] as Array<'admin' | 'user'>,
+    action: 'openPackages',
   },
 ]
 
@@ -142,7 +151,39 @@ export default function Sidebar({ onClose }: SidebarProps) {
           .map((item) => {
           const Icon = item.icon
           const hasSubItems = item.subItems && item.subItems.length > 0
+          const hasAction = item.action === 'openPayment'
           const isExpanded = expandedItems.has(item.label)
+
+          // 处理特殊操作（如打开购买套餐页面）
+          if (hasAction) {
+            const handleAction = () => {
+              if (item.action === 'openPackages') {
+                // 在新标签页打开购买套餐页面
+                const packagesUrl = `${window.location.origin}/packages`
+                window.open(packagesUrl, '_blank')
+                handleNavClick()
+              } else if (item.action === 'openPayment') {
+                // 在新标签页打开支付页面
+                const paymentUrl = `${window.location.origin}/payment`
+                window.open(paymentUrl, '_blank')
+                handleNavClick()
+              }
+            }
+
+            return (
+              <button
+                key={item.label}
+                onClick={handleAction}
+                className={clsx(
+                  'flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all font-medium text-white hover:bg-white/10 w-full text-left'
+                )}
+              >
+                <Icon className="w-5 h-5 flex-shrink-0" />
+                <span className="truncate text-base flex-1">{item.label}</span>
+                <ExternalLink className="w-4 h-4 flex-shrink-0 opacity-70" />
+              </button>
+            )
+          }
 
           if (hasSubItems) {
             return (

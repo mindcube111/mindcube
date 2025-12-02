@@ -6,10 +6,9 @@ import { formatDate, formatNumber, formatCurrency } from '@/utils/formatters'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { useInputDialog } from '@/components/InputDialog'
 
-const statusStyles: Record<'active' | 'disabled' | 'pending', string> = {
+const statusStyles: Record<'active' | 'disabled', string> = {
   active: 'bg-successLight text-success border border-success/30',
   disabled: 'bg-dangerLight text-danger border-danger/30',
-  pending: 'bg-warningLight text-warning border border-warning/30',
 }
 
 export default function UserManagement() {
@@ -17,8 +16,6 @@ export default function UserManagement() {
   const {
     user,
     accounts,
-    accountsLoading,
-    fetchAccounts,
     clearCustomUsers,
     updateUserStatus,
     updateUserQuota,
@@ -29,10 +26,6 @@ export default function UserManagement() {
   if (!user || user.role !== 'admin') {
     return <Navigate to="/dashboard" replace />
   }
-
-  useEffect(() => {
-    fetchAccounts()
-  }, [fetchAccounts])
 
   const customAccounts = useMemo(() => accounts.filter((acc) => acc.role !== 'admin'), [accounts])
   const adminAccounts = useMemo(() => accounts.filter((acc) => acc.role === 'admin'), [accounts])
@@ -46,12 +39,8 @@ export default function UserManagement() {
     if (!confirmed) {
       return
     }
-    const result = await updateUserStatus(accountId, nextStatus)
-    await showAlert(
-      result.success ? '操作成功' : '操作失败',
-      result.message || (result.success ? '用户状态已更新' : '更新失败，请稍后重试'),
-      result.success ? 'success' : 'alert'
-    )
+    updateUserStatus(accountId, nextStatus)
+    await showAlert('操作成功', '用户状态已更新', 'success')
   }
 
   const handleClear = async () => {
@@ -67,15 +56,8 @@ export default function UserManagement() {
     if (!confirmed) {
       return
     }
-    const result = await clearCustomUsers()
-    await showAlert(
-      result.success ? '清理成功' : '清理失败',
-      result.message || (result.success ? '已清空注册用户数据' : '操作失败，请稍后重试'),
-      result.success ? 'success' : 'alert'
-    )
-    if (result.success) {
-      fetchAccounts()
-    }
+    clearCustomUsers()
+    await showAlert('清理成功', '已清空注册用户数据', 'success')
   }
 
   const handleAddQuota = async (accountId: string, accountUsername: string, accountRole: 'admin' | 'user') => {
@@ -108,17 +90,12 @@ export default function UserManagement() {
 
     if (input !== null && input !== '') {
       const amount = parseInt(input, 10)
-      const result = await updateUserQuota(accountId, amount)
+      updateUserQuota(accountId, amount)
       await showAlert(
-        result.success ? '操作成功' : '操作失败',
-        result.success
-          ? `已为用户 "${accountUsername}" 添加 ${formatNumber(amount)} 条额度`
-          : result.message || '额度添加失败，请稍后再试',
-        result.success ? 'success' : 'alert'
+        '操作成功',
+        `已为用户 "${accountUsername}" 添加 ${formatNumber(amount)} 条额度`,
+        'success'
       )
-      if (result.success) {
-        fetchAccounts()
-      }
     }
   }
 
@@ -163,11 +140,10 @@ export default function UserManagement() {
         
         {/* 移动端卡片视图 */}
         <div className="block md:hidden px-4 space-y-3">
-          {accountsLoading && <p className="text-center text-sm text-gray-500">加载中...</p>}
-          {!accountsLoading && accounts.length === 0 && (
+          {accounts.length === 0 && (
             <p className="text-center text-sm text-gray-500">暂无用户数据</p>
           )}
-          {!accountsLoading && accounts.map((account) => (
+          {accounts.map((account) => (
             <div
               key={account.id}
               className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600"
@@ -179,7 +155,7 @@ export default function UserManagement() {
                   <p className="text-xs text-gray-600 dark:text-gray-400 truncate mt-1">{account.email}</p>
                 </div>
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusStyles[account.status || 'active']}`}>
-                  {account.status === 'active' ? '正常' : account.status === 'pending' ? '待审核' : '已禁用'}
+                  {account.status === 'active' ? '正常' : '已禁用'}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
@@ -242,9 +218,7 @@ export default function UserManagement() {
 
         {/* 桌面端表格视图 */}
         <div className="hidden md:block overflow-x-auto -mx-4 sm:-mx-6 lg:-mx-8 xl:-mx-8 px-4 sm:px-6 lg:px-8">
-          {accountsLoading ? (
-            <div className="py-10 text-center text-gray-500">用户数据加载中...</div>
-          ) : accounts.length === 0 ? (
+          {accounts.length === 0 ? (
             <div className="py-10 text-center text-gray-500">暂无用户数据</div>
           ) : (
           <table className="w-full">
@@ -298,7 +272,7 @@ export default function UserManagement() {
                   </td>
                   <td className="py-2 sm:py-3 px-2 sm:px-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusStyles[account.status || 'active']}`}>
-                      {account.status === 'active' ? '正常' : account.status === 'pending' ? '待审核' : '已禁用'}
+                      {account.status === 'active' ? '正常' : '已禁用'}
                     </span>
                   </td>
                   <td className="py-2 sm:py-3 px-2 sm:px-4 text-gray-500 text-xs sm:text-sm hidden lg:table-cell">

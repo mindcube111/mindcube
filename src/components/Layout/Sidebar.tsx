@@ -33,7 +33,11 @@ const navItems = [
   { path: '/admin/backup', icon: Database, label: '数据备份', roles: ['admin'] as Array<'admin' | 'user'> },
 ]
 
-export default function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void
+}
+
+export default function Sidebar({ onClose }: SidebarProps) {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
 
@@ -92,6 +96,7 @@ export default function Sidebar() {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={onClose}
               className={({ isActive }) =>
                 clsx(
                   'flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all',

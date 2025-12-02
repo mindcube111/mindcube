@@ -1,0 +1,62 @@
+const fs = require('fs');
+
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+
+// 添加基本字段
+pkg.name = 'psychological-assessment-platform';
+pkg.version = '2.0.0';
+pkg.type = 'module';
+pkg.description = '专业、便捷、可信赖的心理健康测评管理系统';
+
+// 添加 scripts
+pkg.scripts = {
+  "dev": "vite",
+  "build": "tsc && vite build && npm run copy-functions",
+  "copy-functions": "node scripts/copy-functions.js",
+  "preview": "vite preview",
+  "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+  "test": "vitest",
+  "test:ui": "vitest --ui",
+  "test:coverage": "vitest --coverage",
+  "test:e2e": "playwright test",
+  "test:e2e:ui": "playwright test --ui",
+  "deploy:prepare": "node scripts/deploy.js",
+  "deploy:cloudflare": "npm run build && wrangler pages deploy dist --project-name=psychological-assessment-platform",
+  "deploy": "npm run deploy:prepare"
+};
+
+// 确保所有必要的依赖都存在
+const requiredDeps = {
+  "crypto-js": "^4.2.0",
+  "clsx": "^2.0.0",
+  "date-fns": "^2.30.0",
+  "react": "^18.2.0",
+  "react-dom": "^18.2.0",
+  "react-router-dom": "^6.20.0",
+  "recharts": "^2.10.3"
+};
+
+const requiredDevDeps = {
+  "@playwright/test": "^1.40.0",
+  "@typescript-eslint/eslint-plugin": "^6.14.0",
+  "@typescript-eslint/parser": "^6.14.0",
+  "@vitejs/plugin-react": "^4.2.1",
+  "@vitest/ui": "^1.0.4",
+  "autoprefixer": "^10.4.16",
+  "eslint": "^8.55.0",
+  "eslint-plugin-react-hooks": "^4.6.0",
+  "eslint-plugin-react-refresh": "^0.4.5",
+  "postcss": "^8.4.32",
+  "tailwindcss": "^3.3.6",
+  "typescript": "^5.2.2",
+  "vite": "^5.0.8",
+  "vitest": "^1.0.4"
+};
+
+// 合并依赖
+pkg.dependencies = { ...requiredDeps, ...pkg.dependencies };
+pkg.devDependencies = { ...requiredDevDeps, ...pkg.devDependencies };
+
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+console.log('✓ package.json 已更新');
+

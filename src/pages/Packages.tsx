@@ -1,101 +1,24 @@
-import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useState } from 'react'
 import { Check, ShoppingCart, Crown } from 'lucide-react'
 import { Package } from '@/types'
 import { mockPackages } from '@/data/mockData'
-import { formatNumber, generateId } from '@/utils/formatters'
+import { formatNumber } from '@/utils/formatters'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 
 export default function Packages() {
-  const [searchParams, setSearchParams] = useSearchParams()
   const [selectedId, setSelectedId] = useState<string>(
     mockPackages.find((pkg) => pkg.recommended)?.id ?? mockPackages[0].id,
   )
-  const [payingId, setPayingId] = useState<string | null>(null)
   const { showAlert, DialogComponent } = useConfirmDialog()
 
-  // 处理支付返回结果
-  useEffect(() => {
-    const result = searchParams.get('result')
-    const orderNo = searchParams.get('order')
-    
-    if (result === 'return' && orderNo) {
-      const checkOrder = async () => {
-        try {
-          const resp = await fetch(`/api/payment/order-status?out_trade_no=${encodeURIComponent(orderNo)}`)
-          if (resp.ok) {
-            const data = await resp.json()
-            if (data.success && data.data?.status === 'paid') {
-              await showAlert('支付成功', '套餐购买成功！额度已到账，可立即使用。', 'success')
-              // 清除URL参数
-              setSearchParams({}, { replace: true })
-            }
-          }
-        } catch (error) {
-          console.error('查询订单状态失败:', error)
-        }
-      }
-      checkOrder()
-    }
-  }, [searchParams, setSearchParams, showAlert])
-
   const handlePurchase = async (pkg: Package) => {
-    try {
-      setPayingId(pkg.id)
-
-      const outTradeNo = generateId()
-      const baseUrl = window.location.origin
-      const notifyUrl = `${baseUrl}/api/payment/notify`
-      // 购买套餐的回调地址，支付完成后跳回本页面
-      const returnUrl = `${baseUrl}/packages?result=return&pkg=${encodeURIComponent(
-        pkg.id,
-      )}&order=${outTradeNo}`
-
-      const resp = await fetch('/api/payment/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: `购买套餐 - ${pkg.name}`,
-          money: String(pkg.price),
-          out_trade_no: outTradeNo,
-          notify_url: notifyUrl,
-          return_url: returnUrl,
-          type: 'alipay',
-          // 在 param 中携带套餐ID，便于后端区分来源
-          param: `package:${pkg.id}`,
-        }),
-      })
-
-      if (!resp.ok) {
-        const text = await resp.text()
-        console.error('创建套餐支付订单失败:', resp.status, text)
-        throw new Error(`创建支付订单失败（${resp.status}）`)
-      }
-
-      const data = await resp.json()
-      console.log('套餐支付创建结果:', data)
-
-      if (!data.success) {
-        throw new Error(data.message || '支付接口返回错误')
-      }
-
-      if (!data.data?.payUrl) {
-        throw new Error('支付网关返回异常：缺少支付链接')
-      }
-
-      // 跳转到易支付收银台
-      window.location.href = data.data.payUrl
-    } catch (error) {
-      console.error(error)
-      await showAlert(
-        '支付失败',
-        error instanceof Error ? error.message : '创建支付订单时出现错误，请稍后重试',
-        'alert',
-      )
-      setPayingId(null)
-    }
+    const quotaLabel = pkg.unlimited ? '不限量' : `${formatNumber(pkg.quota)} 条`
+    await showAlert(
+      '购买套餐',
+      `准备购买套餐：${pkg.name}（${quotaLabel}，¥${pkg.price}）\n\n（支付功能开发中）`,
+      'info'
+    )
+    // 这里可以跳转到支付页面
   }
 
   return (
@@ -124,7 +47,7 @@ export default function Packages() {
       </div>
 
       {/* 套餐列表 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         {mockPackages.map((pkg) => {
           const quotaLabel = pkg.unlimited ? '全年不限量' : `${formatNumber(pkg.quota)} 条`
           const pricePer = pkg.unlimited ? '不限次数 · 按年结算' : `约 ¥${(pkg.price / pkg.quota).toFixed(2)}/条`
@@ -203,15 +126,14 @@ export default function Packages() {
                     e.stopPropagation()
                     handlePurchase(pkg)
                   }}
-                  disabled={payingId === pkg.id}
                   className={`w-full mt-6 py-3 rounded-lg font-medium transition-all ${
                     isSelected
                       ? 'bg-gradient-to-r from-primary-500 to-secondary-500 text-white shadow-lg'
-                      : 'bg-gray-200 text-gray-800 hover:bg-gray-300 disabled:opacity-60 disabled:cursor-not-allowed'
+                      : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
                   }`}
                 >
                   <ShoppingCart className="w-4 h-4 inline mr-2" />
-                  {payingId === pkg.id ? '正在跳转...' : '立即购买'}
+                  立即购买
                 </button>
               </div>
             </div>

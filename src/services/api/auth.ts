@@ -9,8 +9,6 @@ import { User } from '@/types'
 export interface LoginRequest {
   username: string
   password: string
-  captchaAnswer?: string
-  captchaId?: string
 }
 
 export interface LoginResponse {
@@ -24,8 +22,6 @@ export interface RegisterRequest {
   email: string
   password: string
   name?: string
-  captchaAnswer?: string
-  captchaId?: string
 }
 
 export interface RegisterResponse {
@@ -49,6 +45,12 @@ export async function login(
   })
 
   if (response.success && response.data) {
+    // 保存 token
+    apiClient.setAuthToken(response.data.token)
+    // 保存用户信息
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('user', JSON.stringify(response.data.user))
+    }
     return {
       success: true,
       data: response.data,

@@ -1,8 +1,8 @@
-import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Link as LinkIcon,
+  ShoppingCart,
   Bell,
   Settings,
   LogOut,
@@ -12,93 +12,38 @@ import {
   Database,
   BarChart3,
   Download,
-  ChevronDown,
-  ChevronUp,
-  Archive,
-  CreditCard,
-  ExternalLink,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
 
-interface NavItem {
-  path?: string
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-  roles?: Array<'admin' | 'user'>
-  action?: 'openPayment' // 特殊操作类型
-  subItems?: Array<{
-    path: string
-    label: string
-    icon: React.ComponentType<{ className?: string }>
-  }>
-}
-
-const navItems: NavItem[] = [
+const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
   { path: '/links/generate', icon: LinkIcon, label: '生成链接' },
   { path: '/links/manage', icon: LinkIcon, label: '链接管理' },
-  { path: '/packages', icon: CreditCard, label: '购买套餐' },
   { path: '/statistics', icon: BarChart3, label: '统计分析' },
-  { path: '/admin/users', icon: Users, label: '用户管理', roles: ['admin'] as Array<'admin' | 'user'> },
+  { path: '/packages', icon: ShoppingCart, label: '购买套餐' },
   { path: '/notifications', icon: Bell, label: '通知中心' },
-  {
-    icon: Database,
-    label: '题目管理',
-    roles: ['admin'] as Array<'admin' | 'user'>,
-    subItems: [
-      { path: '/admin/questions/import', label: '题目导入', icon: UploadCloud },
-      { path: '/links/batch-import', label: '批量导入', icon: UploadCloud },
-      { path: '/admin/questions/manage', label: '管理器题目管理', icon: Database },
-      { path: '/admin/questionnaires/manage', label: '主页题目管理', icon: FileText },
-    ],
-  },
-  {
-    icon: Archive,
-    label: '数据管理',
-    roles: ['admin'] as Array<'admin' | 'user'>,
-    subItems: [
-      { path: '/admin/reports', label: '报告管理', icon: FileText },
-      { path: '/admin/export-history', label: '导出历史', icon: Download },
-      { path: '/admin/audit', label: '操作日志', icon: FileText },
-      { path: '/admin/backup', label: '数据备份', icon: Database },
-    ],
-  },
+  { path: '/admin/questions/import', icon: UploadCloud, label: '题目导入', roles: ['admin'] as Array<'admin' | 'user'> },
+  { path: '/links/batch-import', icon: UploadCloud, label: '批量导入', roles: ['admin'] as Array<'admin' | 'user'> },
+  { path: '/admin/questions/manage', icon: Database, label: '题目管理', roles: ['admin'] as Array<'admin' | 'user'> },
+  { path: '/admin/users', icon: Users, label: '用户管理', roles: ['admin'] as Array<'admin' | 'user'> },
+  { path: '/admin/reports', icon: FileText, label: '报告管理', roles: ['admin'] as Array<'admin' | 'user'> },
+  { path: '/admin/export-history', icon: Download, label: '导出历史', roles: ['admin'] as Array<'admin' | 'user'> },
+  { path: '/admin/audit', icon: FileText, label: '操作日志', roles: ['admin'] as Array<'admin' | 'user'> },
+  { path: '/admin/backup', icon: Database, label: '数据备份', roles: ['admin'] as Array<'admin' | 'user'> },
 ]
 
-interface SidebarProps {
-  onClose?: () => void
-}
-
-export default function Sidebar({ onClose }: SidebarProps) {
+export default function Sidebar() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
 
   const handleLogout = () => {
     logout()
     navigate('/login')
   }
 
-  const handleNavClick = () => {
-    // 移动端点击导航项后关闭侧边栏
-    if (onClose && window.innerWidth < 1024) {
-      onClose()
-    }
-  }
-
-  const toggleItem = (label: string) => {
-    const newExpanded = new Set(expandedItems)
-    if (newExpanded.has(label)) {
-      newExpanded.delete(label)
-    } else {
-      newExpanded.add(label)
-    }
-    setExpandedItems(newExpanded)
-  }
-
   return (
-    <div className="w-64 bg-primary-500 dark:bg-gray-800 text-white shadow-2xl h-screen flex flex-col transition-colors overflow-y-auto">
+    <div className="w-64 bg-primary-500 dark:bg-gray-800 text-white shadow-2xl min-h-screen flex flex-col transition-colors">
       <div className="p-6 border-b border-white/20 flex items-center gap-3">
         <img
           src="/logo-cube.jpg"
@@ -127,8 +72,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
               className="w-10 h-10 rounded-full object-cover border border-white/40 bg-white"
             />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white truncate">{user.name}</p>
-              <p className="text-xs text-white/90 truncate">{user.email}</p>
+              <p className="text-sm font-medium text-white truncate">{user.name}</p>
+              <p className="text-xs text-white/80 truncate">{user.email}</p>
             </div>
           </div>
         </div>
@@ -143,102 +88,21 @@ export default function Sidebar({ onClose }: SidebarProps) {
           })
           .map((item) => {
           const Icon = item.icon
-          const hasSubItems = item.subItems && item.subItems.length > 0
-          const hasAction = item.action === 'openPayment'
-          const isExpanded = expandedItems.has(item.label)
-
-          // 处理特殊操作（如打开支付页面）
-          if (hasAction) {
-            const handleAction = () => {
-              if (item.action === 'openPayment') {
-                // 在新标签页打开支付页面
-                const paymentUrl = `${window.location.origin}/payment`
-                window.open(paymentUrl, '_blank')
-                handleNavClick()
-              }
-            }
-
-            return (
-              <button
-                key={item.label}
-                onClick={handleAction}
-                className={clsx(
-                  'flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all font-medium text-white hover:bg-white/10 w-full text-left'
-                )}
-              >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                <span className="truncate text-base flex-1">{item.label}</span>
-                <ExternalLink className="w-4 h-4 flex-shrink-0 opacity-70" />
-              </button>
-            )
-          }
-
-          if (hasSubItems) {
-            return (
-              <div key={item.label} className="mb-2">
-                <button
-                  onClick={() => toggleItem(item.label)}
-                  className={clsx(
-                    'w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all text-white hover:bg-white/10 font-medium'
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon className="w-5 h-5 flex-shrink-0" />
-                    <span className="truncate text-base">{item.label}</span>
-                  </div>
-                  <div className="flex-shrink-0 bg-white/20 rounded-full p-1.5 hover:bg-white/30 transition-colors">
-                    {isExpanded ? (
-                      <ChevronUp className="w-5 h-5 text-white" />
-                    ) : (
-                      <ChevronDown className="w-5 h-5 text-white" />
-                    )}
-                  </div>
-                </button>
-                {isExpanded && (
-                  <div className="ml-4 mt-1 space-y-1">
-                    {item.subItems?.map((subItem) => {
-                      const SubIcon = subItem.icon
-                      return (
-                        <NavLink
-                          key={subItem.path}
-                          to={subItem.path}
-                          onClick={handleNavClick}
-                          className={({ isActive }) =>
-                            clsx(
-                              'flex items-center gap-3 px-4 py-2 rounded-lg transition-all text-sm font-medium',
-                              isActive
-                                ? 'bg-white/30 text-white shadow-md'
-                                : 'text-white hover:bg-white/15'
-                            )
-                          }
-                        >
-                          <SubIcon className="w-4 h-4 flex-shrink-0" />
-                          <span className="truncate">{subItem.label}</span>
-                        </NavLink>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          }
-
           return (
             <NavLink
               key={item.path}
-              to={item.path!}
-              onClick={handleNavClick}
+              to={item.path}
               className={({ isActive }) =>
                 clsx(
-                  'flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all font-medium',
+                  'flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all',
                   isActive
                     ? 'bg-white text-primary-600 font-semibold shadow-lg'
-                    : 'text-white hover:bg-white/10'
+                    : 'text-white/80 hover:bg-white/10'
                 )
               }
             >
-              <Icon className="w-5 h-5 flex-shrink-0" />
-              <span className="truncate text-base">{item.label}</span>
+              <Icon className="w-5 h-5" />
+              <span>{item.label}</span>
             </NavLink>
           )
         })}
@@ -249,22 +113,22 @@ export default function Sidebar({ onClose }: SidebarProps) {
           to="/profile"
           className={({ isActive }) =>
             clsx(
-              'flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all font-medium',
+              'flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all',
               isActive
                 ? 'bg-white text-primary-600 font-semibold shadow-lg'
-                : 'text-white hover:bg-white/10'
+                : 'text-white/80 hover:bg-white/10'
             )
           }
         >
           <Settings className="w-5 h-5" />
-          <span className="text-base">个人设置</span>
+          <span>个人设置</span>
         </NavLink>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-4 py-3 rounded-xl text-white hover:bg-white/10 transition-colors w-full font-medium"
+          className="flex items-center gap-3 px-4 py-3 rounded-xl text-white/90 hover:bg-white/10 transition-colors w-full"
         >
           <LogOut className="w-5 h-5" />
-          <span className="text-base">退出登录</span>
+          <span>退出登录</span>
         </button>
       </div>
     </div>

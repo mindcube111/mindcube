@@ -5,9 +5,8 @@
 
 import { successResponse, errorResponse, unauthorizedResponse, notFoundResponse } from '../utils/response.js'
 import { verifyAuth, requireAdmin, hashPassword, verifyPassword } from '../utils/auth.js'
-import { generateToken, extractToken, verifyToken } from '../utils/jwt.js'
-import { UserDB, LinkDB, QuestionnaireDB, NotificationDB, OrderDB } from '../utils/db.js'
-import { md5Sign, verifyMd5Sign } from '../utils/zpay.js'
+import { generateToken } from '../utils/jwt.js'
+import { UserDB, LinkDB, QuestionnaireDB, NotificationDB } from '../utils/db.js'
 
 // 初始化数据库实例（KV 会在运行时从环境变量获取）
 function getDB(context) {
@@ -27,7 +26,6 @@ function getDB(context) {
     links: new LinkDB(kv),
     questionnaires: new QuestionnaireDB(kv),
     notifications: new NotificationDB(kv),
-    orders: new OrderDB(kv),
   }
 }
 
@@ -55,13 +53,7 @@ export async function onRequest(context) {
   const { request, env, params } = context
   const { path } = params || {}
   const url = new URL(request.url)
-
-  // 在 Pages Functions 中，[[path]] 参数在某些版本/场景下可能是字符串或数组
-  // 为避免运行时错误，这里统一规范化为字符串
-  const rawPath =
-    Array.isArray(path) ? path.join('/') : typeof path === 'string' ? path : ''
-
-  const pathSegments = rawPath.split('/').filter(Boolean)
+  const pathSegments = (path || '').split('/').filter(Boolean)
   const method = request.method
 
   const db = getDB(context)
@@ -100,25 +92,8 @@ export async function onRequest(context) {
 async function routeHandler(pathSegments, method, request, db, env) {
   const [resource, action, ...rest] = pathSegments
 
-  // 添加调试日志（帮助诊断路由问题）
-  console.log('路由调试:', {
-    pathSegments,
-    resource,
-    action,
-    method,
-    url: request.url,
-    rawPath: pathSegments.join('/')
-  })
-
-  // 支付相关路由（部分开放）
-  if (resource === 'payment') {
-    console.log('进入支付路由处理:', { action, method })
-    return handlePaymentRoutes(action, method, request, db, env)
-  }
-
   // 认证相关路由（不需要认证）
   if (resource === 'auth') {
-    console.log('进入认证路由处理:', { action, method })
     return handleAuthRoutes(action, method, request, db, env)
   }
 
@@ -179,21 +154,8 @@ async function handleAuthRoutes(action, method, request, db, env, userId = null)
     return handleRegister(request, db)
   }
   
-  // /api/auth/me 允许未认证访问（返回未登录状态或用户信息）
-  if (action === 'me' && method === 'GET') {
-    // 尝试从 token 中获取用户信息
-    const token = extractToken(request)
-    
-    if (token) {
-      const payload = verifyToken(token, env)
-      if (payload && payload.userId) {
-        // 有有效的 token，返回用户信息
-        return handleGetCurrentUser(payload.userId, db)
-      }
-    }
-    
-    // 没有 token 或 token 无效，返回未登录状态（但保持成功响应格式）
-    return successResponse(null, '未登录')
+  if (action === 'me' && method === 'GET' && userId) {
+    return handleGetCurrentUser(userId, db)
   }
   
   if (action === 'logout' && method === 'POST') {
@@ -212,385 +174,17 @@ async function handleAuthRoutes(action, method, request, db, env, userId = null)
 }
 
 /**
- * 支付路由处理（易支付）
- * - /api/payment/create  前端创建支付链接
- * - /api/payment/notify  易支付异步通知回调
- */
-async function handlePaymentRoutes(action, method, request, db, env) {
-  // 尝试多种方式读取环境变量（兼容不同的 Cloudflare 环境）
-  const pid = env.ZPAY_PID || env.VITE_ZPAY_PID
-  let key = env.ZPAY_KEY || env.VITE_ZPAY_KEY
-
-  // 获取所有相关环境变量键（用于诊断）
-  const allEnvKeys = Object.keys(env)
-  const relatedKeys = allEnvKeys.filter(k => 
-    k.includes('ZPAY') || k.includes('PAY') || k.includes('KEY') || k.includes('PID')
-  )
-
-  // 详细的配置检查和日志
-  console.log('=== 支付配置深度诊断 ===')
-  console.log('环境变量信息:', {
-    total_env_keys: allEnvKeys.length,
-    related_env_keys: relatedKeys.join(', ') || '未找到相关环境变量',
-    pid_exists: !!pid,
-    pid_type: typeof pid,
-    pid_value: pid ? (pid.length > 8 ? pid.substring(0, 4) + '...' + pid.substring(pid.length - 4) : pid) : '未设置',
-    key_exists: !!key,
-    key_type: typeof key,
-    key_length: key ? key.length : 0,
-    key_preview: key ? (key.length > 8 ? key.substring(0, 6) + '...' + key.substring(key.length - 4) : key.substring(0, 10)) : '未设置',
-    key_is_string: typeof key === 'string'
-  })
-
-  // 检查 KEY 是否为占位符
-  let isPlaceholder = false
-  let detectedPlaceholder = null
-  if (key && typeof key === 'string') {
-    const placeholderPatterns = [
-      { pattern: '商户KEY', name: '商户KEY' },
-      { pattern: '你的', name: '你的' },
-      { pattern: 'your', name: 'your' },
-      { pattern: 'example', name: 'example' },
-      { pattern: 'placeholder', name: 'placeholder' },
-      { pattern: 'test', name: 'test' },
-      { pattern: 'demo', name: 'demo' },
-      { pattern: 'change', name: 'change' }
-    ]
-    
-    for (const { pattern, name } of placeholderPatterns) {
-      if (key.toLowerCase().includes(pattern.toLowerCase())) {
-        isPlaceholder = true
-        detectedPlaceholder = name
-        break
-      }
-    }
-  }
-
-  console.log('KEY 验证详情:', {
-    key_exists: !!key,
-    key_type: typeof key,
-    key_length: key ? key.length : 0,
-    key_trimmed_length: key && typeof key === 'string' ? key.trim().length : 0,
-    is_placeholder: isPlaceholder,
-    detected_placeholder: detectedPlaceholder,
-    key_first_10_chars: key && typeof key === 'string' ? key.substring(0, 10) : 'N/A',
-    key_last_10_chars: key && typeof key === 'string' && key.length > 10 ? key.substring(key.length - 10) : 'N/A',
-    key_full_preview: key && typeof key === 'string' && key.length <= 50 ? key : (key ? key.substring(0, 20) + '...' + key.substring(key.length - 10) : 'N/A')
-  })
-
-  // 先检查是否为占位符（在检查是否为空之前）
-  if (key && typeof key === 'string' && isPlaceholder) {
-    console.error('❌ 支付配置错误: ZPAY_KEY 是占位符', {
-      key_preview: key.substring(0, 50),
-      detected_placeholder: detectedPlaceholder,
-      key_length: key.length
-    })
-    return errorResponse(
-      `支付配置错误：检测到 ZPAY_KEY 环境变量的值仍然是占位符（检测到：${detectedPlaceholder || '未知占位符'}）。\n\n` +
-      `当前 KEY 值：${key.length > 50 ? key.substring(0, 50) + '...' : key}\n\n` +
-      `请执行以下步骤修复：\n` +
-      `1. 登录 Cloudflare Dashboard → 您的项目 → Settings → Variables\n` +
-      `2. 找到 ZPAY_KEY 变量，检查当前值\n` +
-      `3. 如果值是"商户KEY"等占位符，请删除并更新为易支付后台的真实密钥值\n` +
-      `4. 从易支付后台复制真实密钥：登录 https://zpayz.cn 后查看商户密钥\n` +
-      `5. 粘贴到 ZPAY_KEY 的值中，确保完全一致（通常是32位字母数字组合）\n` +
-      `6. 保存环境变量\n` +
-      `7. ⚠️ 重要：重新部署 Worker（在 Deployments 页面点击最新部署的"重新部署"按钮）\n\n` +
-      `注意：环境变量修改后必须重新部署才能生效！`,
-      500
-    )
-  }
-
-  if (!pid || !key) {
-    console.error('❌ 支付配置错误: ZPAY_PID 或 ZPAY_KEY 未配置', {
-      pid: !!pid,
-      key: !!key,
-      available_env_keys: relatedKeys.join(', ') || '无相关环境变量',
-      all_env_key_sample: allEnvKeys.slice(0, 5).join(', ')
-    })
-    return errorResponse(
-      '支付配置未完成：ZPAY_PID 或 ZPAY_KEY 环境变量未配置。\n\n' +
-      '请检查：\n' +
-      '1. Cloudflare Dashboard → Settings → Variables 中是否已配置这两个变量\n' +
-      '2. 变量名称拼写是否正确（区分大小写）\n' +
-      '3. 如果已配置，请重新部署 Worker（环境变量修改后必须重新部署才能生效）',
-      500
-    )
-  }
-  
-  if (typeof key !== 'string' || key.trim() === '') {
-    console.error('❌ 支付配置错误: ZPAY_KEY 是占位符或无效值', {
-      key_type: typeof key,
-      key_length: key ? key.length : 0,
-      key_preview: key ? key.substring(0, 20) : '未设置',
-      is_placeholder: isPlaceholder,
-      detected_placeholder: detectedPlaceholder,
-      key_full_value: key && typeof key === 'string' && key.length <= 100 ? key : (key ? key.substring(0, 30) + '...' : 'N/A')
-    })
-    return errorResponse(
-      `支付配置错误：检测到 ZPAY_KEY 环境变量的值仍然是占位符（检测到：${detectedPlaceholder || '未知占位符'}）。\n\n` +
-      `当前 KEY 值预览：${key ? (key.length > 30 ? key.substring(0, 30) + '...' : key) : '未设置'}\n\n` +
-      `请执行以下步骤修复：\n` +
-      `1. 登录 Cloudflare Dashboard → 您的项目 → Settings → Variables\n` +
-      `2. 找到 ZPAY_KEY 变量，检查当前值\n` +
-      `3. 如果值是"商户KEY"等占位符，请更新为易支付后台的真实密钥值\n` +
-      `4. 从易支付后台复制真实密钥：https://zpayz.cn\n` +
-      `5. 粘贴到 ZPAY_KEY 的值中，确保完全一致\n` +
-      `6. 保存环境变量\n` +
-      `7. ⚠️ 重要：重新部署 Worker（在 Deployments 页面点击"重新部署"，或推送代码触发自动部署）\n\n` +
-      `注意：环境变量修改后必须重新部署才能生效！`,
-      500
-    )
-  }
-  
-  // 检查 KEY 长度（真实的密钥通常是32位或更长）
-  if (key.length < 20) {
-    console.error('❌ 支付配置错误: ZPAY_KEY 长度太短', {
-      key_length: key.length,
-      key_preview: key.substring(0, 20),
-      expected_length: '通常为32位或更长'
-    })
-    return errorResponse(
-      `支付配置错误：商户密钥长度异常（当前：${key.length}位，通常应为32位或更长）。\n\n` +
-      `请确认使用的是易支付后台的真实密钥值，而不是占位符或示例值。`,
-      500
-    )
-  }
-  
-  console.log('✅ 支付配置验证通过')
-
-  // 创建支付链接：返回签名后的 submit.php URL，由前端重定向
-  if (action === 'create' && method === 'POST') {
-    const body = await request.json()
-    const {
-      name,
-      money,
-      out_trade_no,
-      notify_url,
-      return_url,
-      type = 'alipay',
-      param = '',
-    } = body || {}
-
-    if (!name || !money || !out_trade_no || !notify_url || !return_url) {
-      return errorResponse('缺少必要参数', 400)
-    }
-
-    // 构建签名参数（按易支付要求：ASCII 顺序，不能有空值）
-    const baseParams = {}
-    
-    // 按 ASCII 顺序添加参数（易支付要求参数按字母顺序排序）
-    // 注意：只添加非空值
-    if (money !== undefined && money !== null && money !== '') baseParams.money = String(money)
-    if (name !== undefined && name !== null && name !== '') baseParams.name = String(name)
-    if (notify_url !== undefined && notify_url !== null && notify_url !== '') baseParams.notify_url = String(notify_url)
-    if (out_trade_no !== undefined && out_trade_no !== null && out_trade_no !== '') baseParams.out_trade_no = String(out_trade_no)
-    if (param !== undefined && param !== null && param !== '') baseParams.param = String(param)
-    if (pid !== undefined && pid !== null && pid !== '') baseParams.pid = String(pid)
-    if (return_url !== undefined && return_url !== null && return_url !== '') baseParams.return_url = String(return_url)
-    if (type !== undefined && type !== null && type !== '') baseParams.type = String(type)
-    
-    // 记录构建的参数（用于调试）
-    console.log('构建的签名参数:', {
-      param_keys: Object.keys(baseParams).sort().join(', '),
-      param_count: Object.keys(baseParams).length,
-      money: baseParams.money,
-      name: baseParams.name?.substring(0, 30),
-      notify_url: baseParams.notify_url,
-      out_trade_no: baseParams.out_trade_no,
-      param: baseParams.param,
-      pid: baseParams.pid,
-      return_url: baseParams.return_url,
-      type: baseParams.type
-    })
-
-    // 注意：KEY 验证已在函数开头完成，这里不需要重复验证
-    // 但为了安全，再次确认（防止代码路径绕过）
-    if (!key || typeof key !== 'string' || key.trim() === '' || key.includes('商户KEY')) {
-      console.error('❌ 签名前 KEY 验证失败（这不应该发生，说明之前的验证被绕过）')
-      return errorResponse('支付配置错误：商户密钥配置无效，请检查环境变量并重新部署', 500)
-    }
-    
-    // 额外检查占位符
-    const placeholderCheck = ['商户KEY', '你的', 'your', 'example'].some(pattern => 
-      key.toLowerCase().includes(pattern.toLowerCase())
-    )
-    
-    if (placeholderCheck) {
-      console.error('支付配置错误: ZPAY_KEY 是占位符', {
-        key_preview: key.substring(0, 10),
-        key_length: key.length
-      })
-      return errorResponse('支付配置错误：ZPAY_KEY 环境变量值仍然是占位符（如"商户KEY"），请更新为易支付后台的真实密钥值，并重新部署Worker', 500)
-    }
-    
-    if (key.length < 10) {
-      console.error('支付配置错误: ZPAY_KEY 长度太短，可能是无效值', {
-        key_length: key.length
-      })
-      return errorResponse('支付配置错误：商户密钥长度无效，请使用易支付后台的真实密钥值', 500)
-    }
-
-    // 创建本地订单（pending）
-    await db.orders.createOrder({
-      outTradeNo: out_trade_no,
-      name,
-      money,
-      questionnaireType: param,
-      payType: type,
-      status: 'pending',
-    })
-
-    // 生成签名（签名函数会自动按 ASCII 排序并过滤空值）
-    const sign = md5Sign(baseParams, key)
-    
-    // 构建支付 URL
-    const url = new URL('https://zpayz.cn/submit.php')
-    // 添加所有参数（签名函数已确保参数正确）
-    Object.entries(baseParams).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') {
-        url.searchParams.set(k, String(v))
-      }
-    })
-    url.searchParams.set('sign', sign)
-    url.searchParams.set('sign_type', 'MD5')
-    
-    // 调试日志（不输出敏感信息）
-    console.log('支付参数:', {
-      money: baseParams.money,
-      name: baseParams.name,
-      out_trade_no: baseParams.out_trade_no,
-      pid: baseParams.pid,
-      type: baseParams.type,
-      key_length: key ? key.length : 0,
-      key_valid: key && !key.includes('商户KEY') && !key.includes('你的')
-    })
-    
-    // 调试日志（不输出敏感信息）
-    console.log('支付参数:', {
-      money: baseParams.money,
-      name: baseParams.name,
-      out_trade_no: baseParams.out_trade_no,
-      pid: baseParams.pid ? '已设置' : '未设置',
-      type: baseParams.type,
-      sign_type: 'MD5',
-      key_length: key ? key.length : 0
-    })
-
-    return successResponse({
-      payUrl: url.toString(),
-    })
-  }
-
-  // 易支付异步通知回调（notify_url）
-  if (action === 'notify' && method === 'GET') {
-    const url = new URL(request.url)
-    const params = Object.fromEntries(url.searchParams.entries())
-
-    // 验证签名
-    const valid = verifyMd5Sign(params, key)
-    if (!valid) {
-      return new Response('invalid sign', { status: 400 })
-    }
-
-    const { trade_status, out_trade_no, trade_no } = params
-    if (trade_status === 'TRADE_SUCCESS') {
-      // 根据 out_trade_no 查找订单
-      if (out_trade_no) {
-        const order = await db.orders.getOrderByOutTradeNo(out_trade_no)
-        if (order && order.status !== 'paid') {
-          // 为该订单生成一次性测试链接
-          const link = await db.links.createLink({
-            url: `${env.PUBLIC_BASE_URL || 'https://example.com'}/test/${order.outTradeNo}`,
-            questionnaireType: order.questionnaireType,
-            createdBy: order.userId || null,
-            source: 'zpay',
-          })
-
-          await db.orders.updateOrder(order.id, {
-            status: 'paid',
-            tradeNo: trade_no,
-            paidAt: new Date().toISOString(),
-            linkId: link.id,
-          })
-        }
-      }
-
-      return new Response('success', { status: 200 })
-    }
-
-    return new Response('ignored', { status: 200 })
-  }
-
-  // 订单查询（前端 return_url 轮询使用）
-  if (action === 'order-status' && method === 'GET') {
-    const url = new URL(request.url)
-    const outTradeNo = url.searchParams.get('out_trade_no')
-    if (!outTradeNo) {
-      return errorResponse('缺少 out_trade_no', 400)
-    }
-
-    const order = await db.orders.getOrderByOutTradeNo(outTradeNo)
-    if (!order) {
-      return errorResponse('订单不存在', 404)
-    }
-
-    return successResponse({
-      outTradeNo: order.outTradeNo,
-      status: order.status,
-      questionnaireType: order.questionnaireType,
-      linkId: order.linkId || null,
-    })
-  }
-
-  return notFoundResponse('支付路由不存在')
-}
-
-/**
  * 登录处理
  */
 async function handleLogin(request, db, env) {
   const body = await request.json()
-  const { username, password, captchaAnswer, captchaId } = body
+  const { username, password } = body
 
   if (!username || !password) {
     return errorResponse('用户名和密码不能为空', 400)
   }
 
-  // 验证验证码
-  if (!captchaAnswer || captchaId === undefined) {
-    return errorResponse('请输入验证码', 400)
-  }
-
-  // 从请求头或会话中获取验证码答案（这里简化处理，实际应该从会话存储中获取）
-  // 由于 Cloudflare Workers 不支持会话，我们使用简单的验证方式
-  // 在生产环境中，应该使用 KV 存储验证码ID和答案的映射
-  // 这里为了简化，我们接受验证码ID和答案，并在前端验证后传入后端
-  // 后端再次验证答案是否为数字且在合理范围内（防止简单绕过）
-  const answerNum = parseInt(String(captchaAnswer).trim(), 10)
-  if (isNaN(answerNum) || answerNum < 0 || answerNum > 1000) {
-    return errorResponse('验证码格式错误', 400)
-  }
-
-  let user = await db.users.getUserByUsername(username)
-
-  // 如果还没有任何用户，并且使用默认管理员账号登录，则自动创建一个管理员账号
-  // 方便首次部署后直接使用：admin / admin123
-  if (!user) {
-    const allUsers = await db.users.getAllUsers()
-    if (allUsers.length === 0 && username === 'admin' && password === 'admin123') {
-      user = await db.users.createUser({
-        username: 'admin',
-        email: 'admin@example.com',
-        password: hashPassword('admin123'),
-        name: '管理员',
-        role: 'admin',
-        status: 'active',
-        remainingQuota: 9999,
-      })
-    }
-  }
-
+  const user = await db.users.getUserByUsername(username)
   if (!user) {
     return errorResponse('用户名或密码错误', 401)
   }
@@ -627,21 +221,10 @@ async function handleLogin(request, db, env) {
  */
 async function handleRegister(request, db) {
   const body = await request.json()
-  const { username, email, password, name, captchaAnswer, captchaId } = body
+  const { username, email, password, name } = body
 
   if (!username || !email || !password) {
     return errorResponse('用户名、邮箱和密码不能为空', 400)
-  }
-
-  // 验证验证码
-  if (!captchaAnswer || captchaId === undefined) {
-    return errorResponse('请输入验证码', 400)
-  }
-
-  // 验证验证码格式
-  const answerNum = parseInt(String(captchaAnswer).trim(), 10)
-  if (isNaN(answerNum) || answerNum < 0 || answerNum > 1000) {
-    return errorResponse('验证码格式错误', 400)
   }
 
   // 检查用户名是否已存在

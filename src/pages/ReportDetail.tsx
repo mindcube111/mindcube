@@ -10,6 +10,7 @@ import { exportDashboardToPDF } from '@/utils/export'
 import toast from 'react-hot-toast'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import ChartWrapper from '@/components/ChartWrapper'
+import { escapeHtml } from '@/utils/xss'
 import {
   BarChart,
   Bar,
@@ -156,11 +157,11 @@ export default function ReportDetail() {
 
       {/* 报告标题 */}
       <div className="card bg-gradient-to-r from-primary-500 to-secondary-500 text-white">
-        <h1 className="text-3xl font-bold mb-2">{report.title}</h1>
-        <p className="text-white/80">报告ID: {report.id}</p>
+        <h1 className="text-3xl font-bold mb-2">{escapeHtml(report.title)}</h1>
+        <p className="text-white/80">报告ID: {escapeHtml(report.id)}</p>
         <p className="text-white/80">完成时间: {formatDate(report.completedAt)}</p>
         {report.location && (
-          <p className="text-white/80">地点: {report.location}</p>
+          <p className="text-white/80">地点: {escapeHtml(report.location)}</p>
         )}
       </div>
 
@@ -168,7 +169,7 @@ export default function ReportDetail() {
       <div className="card text-center">
         <p className="text-sm text-gray-600 mb-2">总得分</p>
         <p className="text-5xl font-bold text-primary-600 mb-4">{report.totalScore}</p>
-        <p className="text-gray-700">{report.interpretation}</p>
+        <p className="text-gray-700">{escapeHtml(report.interpretation)}</p>
       </div>
 
       {/* 维度得分图表 */}
@@ -236,7 +237,7 @@ export default function ReportDetail() {
             return (
               <div key={dimension} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-gray-900">{dimension}</h3>
+                  <h3 className="font-semibold text-gray-900">{escapeHtml(dimension)}</h3>
                   <div className="flex items-center gap-4">
                     <span className="text-2xl font-bold text-primary-600">{score}</span>
                     <span className={`px-3 py-1 rounded-full text-sm ${

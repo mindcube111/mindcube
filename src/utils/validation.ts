@@ -140,3 +140,38 @@ export function validateRequired(value: any, fieldName: string = '字段'): Vali
   return { isValid: true }
 }
 
+/**
+ * 验证文本长度
+ */
+export function validateTextLength(
+  text: string,
+  min?: number,
+  max?: number,
+  fieldName: string = '文本'
+): ValidationResult {
+  if (min !== undefined && text.length < min) {
+    return { isValid: false, message: `${fieldName}长度不能少于 ${min} 个字符` }
+  }
+
+  if (max !== undefined && text.length > max) {
+    return { isValid: false, message: `${fieldName}长度不能超过 ${max} 个字符` }
+  }
+
+  return { isValid: true }
+}
+
+/**
+ * 验证标签文本（用于特性标签等）
+ */
+export function validateTagText(text: string): ValidationResult {
+  if (!text || text.trim() === '') {
+    return { isValid: false, message: '标签不能为空' }
+  }
+
+  if (text.length > 20) {
+    return { isValid: false, message: '标签长度不能超过 20 个字符' }
+  }
+
+  return { isValid: true }
+}
+

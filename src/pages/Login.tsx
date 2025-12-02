@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import type React from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { LogIn, Lock, User, AlertCircle } from 'lucide-react'
@@ -11,10 +11,28 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [captchaAnswer, setCaptchaAnswer] = useState('')
+  const [captchaA, setCaptchaA] = useState(() => Math.floor(Math.random() * 5) + 3) // 3-7
+  const [captchaB, setCaptchaB] = useState(() => Math.floor(Math.random() * 5) + 2) // 2-6
+  const captchaResult = useMemo(() => captchaA * captchaB, [captchaA, captchaB])
+
+  // 重新生成验证码
+  const regenerateCaptcha = useCallback(() => {
+    setCaptchaA(Math.floor(Math.random() * 5) + 3)
+    setCaptchaB(Math.floor(Math.random() * 5) + 2)
+    setCaptchaAnswer('')
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    if (Number(captchaAnswer) !== captchaResult) {
+      setError('结果不对，再试一次哦')
+      setCaptchaAnswer('')
+      regenerateCaptcha()
+      return
+    }
     setIsSubmitting(true)
 
     const result = await login(username, password)
@@ -36,6 +54,9 @@ export default function Login() {
             <img
               src="/logo-cube.jpg"
               alt="MIND CUBE Logo"
+              width="48"
+              height="48"
+              loading="eager"
               className="w-12 h-12 rounded-2xl"
             />
           </div>
@@ -88,6 +109,26 @@ export default function Login() {
                   required
                   disabled={isSubmitting || isLoading}
                 />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                计算结果： {captchaA} × {captchaB} =
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={captchaAnswer}
+                  onChange={(e) => setCaptchaAnswer(e.target.value)}
+                  className="input pr-24"
+                  placeholder="请输入结果"
+                  required
+                  disabled={isSubmitting || isLoading}
+                />
+                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                  防机器人，请填写结果
+                </span>
               </div>
             </div>
 

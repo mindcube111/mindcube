@@ -8,6 +8,8 @@ import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { useAuth } from '@/contexts/AuthContext'
 import { addAuditLog } from '@/utils/audit'
 import { notificationService } from '@/utils/notifications'
+import { useApiCache } from '@/hooks/useApiCache'
+import { getNotificationList, getUnreadCount } from '@/services/api/notifications'
 
 const notificationIcons = {
   completed: CheckCircle,
@@ -30,22 +32,37 @@ export default function Notifications() {
   const { showConfirm, showAlert, DialogComponent } = useConfirmDialog()
   const previousUnreadRef = useRef(0)
 
-  // 实时数据更新（每60秒刷新一次）
-  // 实际项目中应该从API获取
-  useEffect(() => {
-    const updateNotifications = async () => {
-      try {
-        // const newNotifications = await fetchNotifications()
-        // setNotifications(newNotifications)
-      } catch (error) {
-        console.error('Failed to fetch notifications:', error)
-      }
-    }
+  // 使用缓存 hook 获取通知列表
+  const { data: notificationData, mutate: refreshNotifications } = useApiCache({
+    key: 'notifications-list',
+    fetcher: () => getNotificationList({ page: 1, pageSize: 100 }),
+    cacheTime: 60 * 1000, // 1分钟缓存
+    revalidateOnFocus: true,
+  })
 
-    updateNotifications()
-    const interval = setInterval(updateNotifications, 60000)
+  // 使用缓存 hook 获取未读数量
+  const { data: unreadData, mutate: refreshUnreadCount } = useApiCache({
+    key: 'notifications-unread-count',
+    fetcher: getUnreadCount,
+    cacheTime: 30 * 1000, // 30秒缓存
+    revalidateOnFocus: true,
+  })
+
+  // 更新通知列表
+  useEffect(() => {
+    if (notificationData?.data?.notifications) {
+      setNotifications(notificationData.data.notifications)
+    }
+  }, [notificationData])
+
+  // 定时刷新（每60秒）
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshNotifications(true)
+      refreshUnreadCount(true)
+    }, 60000)
     return () => clearInterval(interval)
-  }, [])
+  }, [refreshNotifications, refreshUnreadCount])
 
   // 请求通知权限
   useEffect(() => {
@@ -62,7 +79,8 @@ export default function Notifications() {
     previousUnreadRef.current = unread.length
   }, [notifications])
 
-  const unreadCount = notifications.filter(n => !n.read).length
+  // 使用缓存的未读数量，如果没有则从通知列表计算
+  const unreadCount = unreadData?.data?.count ?? notifications.filter(n => !n.read).length
 
   const handleMarkAllRead = async () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))

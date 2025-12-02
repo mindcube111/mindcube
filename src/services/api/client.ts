@@ -10,12 +10,9 @@ const DEFAULT_CACHE_TTL = 60_000 // 60秒缓存
 const DEFAULT_RETRY_TIMES = 1
 const DEFAULT_RETRY_DELAY = 300 // 毫秒
 
-export interface ApiResponse<T = any> {
-  success: boolean
-  data?: T
-  message?: string
-  code?: number
-}
+// 使用统一的类型定义
+import type { ApiResponse } from './types'
+export type { ApiResponse }
 
 export interface ApiError {
   message: string

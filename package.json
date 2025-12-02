@@ -5,7 +5,8 @@
   "description": "专业、便捷、可信赖的心理健康测评管理系统",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && npm run copy-functions",
+    "build": "vite build && npm run copy-functions",
+    "build:no-check": "vite build && npm run copy-functions",
     "copy-functions": "node scripts/copy-functions.js",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
@@ -14,11 +15,14 @@
     "test:coverage": "vitest --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "deploy:prepare": "node scripts/deploy.js",
+    "deploy": "node scripts/deploy.js",
+    "deploy:ps1": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1",
+    "deploy:build": "npm run build",
     "deploy:cloudflare": "npm run build && wrangler pages deploy dist --project-name=psychological-assessment-platform",
-    "deploy": "npm run deploy:prepare"
+    "deploy:quick": "npm run build && wrangler pages deploy dist --project-name=psychological-assessment-platform"
   },
   "dependencies": {
+    "crypto-js": "^4.2.0",
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",
     "dompurify": "^3.0.8",

@@ -373,11 +373,15 @@ export class OrderDB {
   async createOrder(order) {
     const orderId = generateId()
     const now = new Date().toISOString()
+    const amountNum = Number(order.amount || 0)
+    const amountCents = Number.isFinite(amountNum) ? Math.round(amountNum * 100) : 0
     const newOrder = {
       ...order,
       id: orderId,
       status: order.status || 'pending', // pending | paid | failed
       createdAt: now,
+      amount: amountNum,
+      amountCents,
     }
 
     await this.kv.put(`${this.orderPrefix}${orderId}`, JSON.stringify(newOrder))

@@ -2,13 +2,16 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { Suspense, lazy } from 'react'
 import MainLayout from './components/Layout/MainLayout'
 import ProtectedRoute from './components/ProtectedRoute'
+import AdminRoute from './components/AdminRoute'
 import RouteBoundary from './components/RouteBoundary'
+import ErrorBoundary from './components/ErrorBoundary'
 import { useAuth } from './contexts/AuthContext'
 
 const Home = lazy(() => import('./pages/Home'))
 const Login = lazy(() => import('./pages/Login'))
 const Register = lazy(() => import('./pages/Register'))
 const Payment = lazy(() => import('./pages/Payment'))
+const PaymentResult = lazy(() => import('./pages/PaymentResult'))
 const Test = lazy(() => import('./pages/Test'))
 const UserAgreement = lazy(() => import('./pages/UserAgreement'))
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
@@ -35,6 +38,7 @@ const QuestionManagePage = lazy(() => import('./pages/QuestionManagePage'))
 const QuestionnaireManage = lazy(() => import('./pages/QuestionnaireManage'))
 const AuditLogs = lazy(() => import('./pages/AuditLogs'))
 const BackupManage = lazy(() => import('./pages/BackupManage'))
+const FunnelAnalytics = lazy(() => import('./pages/FunnelAnalytics'))
 
 // 页面加载组件
 function PageLoader() {
@@ -77,11 +81,27 @@ export default function App() {
         />
         <Route 
           path="/payment" 
-          element={<Payment />} 
+          element={
+            <ErrorBoundary>
+              <Payment />
+            </ErrorBoundary>
+          } 
+        />
+        <Route 
+          path="/payment/result" 
+          element={
+            <ErrorBoundary>
+              <PaymentResult />
+            </ErrorBoundary>
+          } 
         />
         <Route 
           path="/test/:linkId" 
-          element={<Test />} 
+          element={
+            <ErrorBoundary>
+              <Test />
+            </ErrorBoundary>
+          } 
         />
         <Route 
           path="/user-agreement" 
@@ -101,7 +121,11 @@ export default function App() {
         >
           <Route 
             path="dashboard" 
-            element={<Dashboard />} 
+            element={
+              <ErrorBoundary>
+                <Dashboard />
+              </ErrorBoundary>
+            } 
           />
           <Route 
             path="links/generate" 
@@ -148,14 +172,6 @@ export default function App() {
             element={<ReportDetail />} 
           />
           <Route 
-            path="admin/reports" 
-            element={<Reports />} 
-          />
-          <Route 
-            path="admin/export-history" 
-            element={<ExportHistory />} 
-          />
-          <Route 
             path="statistics" 
             element={<Statistics />} 
           />
@@ -163,40 +179,89 @@ export default function App() {
             path="manager" 
             element={<Manager />} 
           />
+          {/* 管理员专用路由 - 使用 AdminRoute 进行二次保护 */}
+          <Route 
+            path="admin/reports" 
+            element={
+              <AdminRoute>
+                <Reports />
+              </AdminRoute>
+            } 
+          />
+          <Route 
+            path="admin/export-history" 
+            element={
+              <AdminRoute>
+                <ExportHistory />
+              </AdminRoute>
+            } 
+          />
           <Route 
             path="admin/users" 
-            element={<UserManagement />} 
+            element={
+              <AdminRoute>
+                <UserManagement />
+              </AdminRoute>
+            } 
           />
           <Route 
             path="admin/users/:userId" 
-            element={<UserDetail />} 
+            element={
+              <AdminRoute>
+                <UserDetail />
+              </AdminRoute>
+            } 
           />
           <Route 
             path="admin/questions/import" 
             element={
-              <RouteBoundary title="题库导入">
-                <QuestionImport />
-              </RouteBoundary>
+              <AdminRoute>
+                <RouteBoundary title="题库导入">
+                  <QuestionImport />
+                </RouteBoundary>
+              </AdminRoute>
             } 
           />
           <Route 
             path="admin/questions/manage" 
-            element={<QuestionManagePage />} 
+            element={
+              <AdminRoute>
+                <QuestionManagePage />
+              </AdminRoute>
+            } 
           />
           <Route 
             path="admin/questionnaires/manage" 
-            element={<QuestionnaireManage />} 
+            element={
+              <AdminRoute>
+                <QuestionnaireManage />
+              </AdminRoute>
+            } 
           />
           <Route 
             path="admin/audit" 
-            element={<AuditLogs />} 
+            element={
+              <AdminRoute>
+                <AuditLogs />
+              </AdminRoute>
+            } 
           />
           <Route 
             path="admin/backup" 
             element={
-              <RouteBoundary title="备份管理">
-                <BackupManage />
-              </RouteBoundary>
+              <AdminRoute>
+                <RouteBoundary title="备份管理">
+                  <BackupManage />
+                </RouteBoundary>
+              </AdminRoute>
+            } 
+          />
+          <Route 
+            path="admin/funnel-analytics" 
+            element={
+              <AdminRoute>
+                <FunnelAnalytics />
+              </AdminRoute>
             } 
           />
         </Route>

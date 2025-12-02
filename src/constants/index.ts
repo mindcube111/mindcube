@@ -105,6 +105,12 @@ export const API_CONFIG = {
   TIMEOUT: 30000,
 } as const
 
+// ZPAY 支付配置（仅支持支付宝，前端不保存密钥）
+export const ZPAY_CONFIG = {
+  GATEWAY: 'https://zpayz.cn',
+  PID: '2025120114591699',
+} as const
+
 // 文件上传配置
 export const FILE_CONFIG = {
   MAX_SIZE: 10 * 1024 * 1024, // 10MB

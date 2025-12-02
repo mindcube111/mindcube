@@ -6,6 +6,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react'
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { logger } from '@/utils/logger'
 
 interface Props {
   children: ReactNode
@@ -36,7 +37,11 @@ class ErrorBoundaryClass extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Error caught by ErrorBoundary:', error, errorInfo)
+    // 使用统一的日志系统记录错误
+    logger.error('Error caught by ErrorBoundary', error, {
+      componentStack: errorInfo.componentStack,
+      errorBoundary: true,
+    })
     
     // 记录错误信息
     this.setState({
@@ -44,8 +49,16 @@ class ErrorBoundaryClass extends Component<Props, State> {
       errorInfo,
     })
 
-    // 可以在这里发送错误报告到日志服务
-    // logErrorToService(error, errorInfo)
+    // 可以在这里发送错误报告到错误追踪服务（如 Sentry）
+    // if (window.Sentry) {
+    //   window.Sentry.captureException(error, {
+    //     contexts: {
+    //       react: {
+    //         componentStack: errorInfo.componentStack,
+    //       },
+    //     },
+    //   })
+    // }
   }
 
   handleReset = () => {

@@ -16,6 +16,9 @@ export * from './users'
 // 题库管理
 export * from './questionnaires'
 
+// 问卷配置管理（主页题目管理）
+export * from './questionnaireConfig'
+
 // 链接管理
 export * from './links'
 

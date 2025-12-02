@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import { Search, Filter, Copy, Download, RefreshCw, Trash2, CheckSquare, Square, FileText } from 'lucide-react'
+import { Search, Filter, Copy, Download, RefreshCw, Trash2, CheckSquare, Square, FileText, ChevronUp, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { Link, LinkStatus } from '@/types'
@@ -12,12 +12,28 @@ import { EmptyState } from '@/components/EmptyState'
 import SearchInput from '@/components/SearchInput'
 import Pagination from '@/components/Pagination'
 
+// 统一的状态样式配置（参考 QuestionnaireManage 的风格）
 const statusConfig: Record<LinkStatus, { label: string; badge: string }> = {
-  unused: { label: '未使用', badge: 'bg-muted text-text' },
-  used: { label: '已使用', badge: 'bg-successLight text-success' },
-  expired: { label: '已过期', badge: 'bg-dangerLight text-danger' },
-  disabled: { label: '已禁用', badge: 'bg-warningLight text-warning' },
+  unused: { 
+    label: '未使用', 
+    badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300' 
+  },
+  used: { 
+    label: '已使用', 
+    badge: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300' 
+  },
+  expired: { 
+    label: '已过期', 
+    badge: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' 
+  },
+  disabled: { 
+    label: '已禁用', 
+    badge: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300' 
+  },
 }
+
+type SortField = 'createdAt' | 'usedAt' | 'questionnaireType' | 'status'
+type SortDirection = 'asc' | 'desc'
 
 const PAGE_SIZE = 12
 
@@ -32,6 +48,8 @@ export default function LinksManage() {
   const [createdBy, setCreatedBy] = useState('')
   const [page, setPage] = useState(1)
   const [stats, setStats] = useState(() => getLinkStats())
+  const [sortField, setSortField] = useState<SortField>('createdAt')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
   const refresh = useCallback(() => {
     const loaded = loadLinks()
@@ -52,7 +70,7 @@ export default function LinksManage() {
   }, [refresh])
 
   const filtered = useMemo(() => {
-    return links.filter((link) => {
+    let result = links.filter((link) => {
       const matchesSearch =
         searchTerm === '' ||
         link.url.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -61,7 +79,49 @@ export default function LinksManage() {
       const matchesCreator = createdBy === '' || link.createdBy === createdBy
       return matchesSearch && matchesStatus && matchesCreator
     })
-  }, [links, searchTerm, statusFilter, createdBy])
+
+    // 排序
+    result = [...result].sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (sortField) {
+        case 'createdAt':
+          aValue = a.createdAt
+          bValue = b.createdAt
+          break
+        case 'usedAt':
+          aValue = a.usedAt || 0
+          bValue = b.usedAt || 0
+          break
+        case 'questionnaireType':
+          aValue = a.questionnaireType
+          bValue = b.questionnaireType
+          break
+        case 'status':
+          aValue = a.status
+          bValue = b.status
+          break
+        default:
+          return 0
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return result
+  }, [links, searchTerm, statusFilter, createdBy, sortField, sortDirection])
+
+  const handleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('desc')
+    }
+  }, [sortField, sortDirection])
 
   const paged = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE
@@ -274,9 +334,51 @@ export default function LinksManage() {
                 </th>
                 <th className="py-2 sm:py-3 px-2 sm:px-3">链接</th>
                 <th className="py-2 sm:py-3 px-2 sm:px-3 hidden sm:table-cell">问卷类型</th>
-                <th className="py-2 sm:py-3 px-2 sm:px-3">状态</th>
-                <th className="py-2 sm:py-3 px-2 sm:px-3 hidden md:table-cell">生成时间</th>
-                <th className="py-2 sm:py-3 px-2 sm:px-3 hidden lg:table-cell">使用时间</th>
+                <th className="py-2 sm:py-3 px-2 sm:px-3">
+                  <button
+                    onClick={() => handleSort('status')}
+                    className="flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                  >
+                    状态
+                    {sortField === 'status' && (
+                      sortDirection === 'asc' ? (
+                        <ChevronUp className="w-3 h-3 sm:w-4 sm:h-4" />
+                      ) : (
+                        <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />
+                      )
+                    )}
+                  </button>
+                </th>
+                <th className="py-2 sm:py-3 px-2 sm:px-3 hidden md:table-cell">
+                  <button
+                    onClick={() => handleSort('createdAt')}
+                    className="flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                  >
+                    生成时间
+                    {sortField === 'createdAt' && (
+                      sortDirection === 'asc' ? (
+                        <ChevronUp className="w-3 h-3 sm:w-4 sm:h-4" />
+                      ) : (
+                        <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />
+                      )
+                    )}
+                  </button>
+                </th>
+                <th className="py-2 sm:py-3 px-2 sm:px-3 hidden lg:table-cell">
+                  <button
+                    onClick={() => handleSort('usedAt')}
+                    className="flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                  >
+                    使用时间
+                    {sortField === 'usedAt' && (
+                      sortDirection === 'asc' ? (
+                        <ChevronUp className="w-3 h-3 sm:w-4 sm:h-4" />
+                      ) : (
+                        <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />
+                      )
+                    )}
+                  </button>
+                </th>
                 <th className="py-2 sm:py-3 px-2 sm:px-3 text-right">操作</th>
               </tr>
             </thead>
@@ -297,7 +399,7 @@ export default function LinksManage() {
                   </td>
                   <td className="py-2 px-2 sm:px-3 hidden sm:table-cell">{link.questionnaireType}</td>
                   <td className="py-2 px-2 sm:px-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs ${statusConfig[link.status].badge}`}>
+                    <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 w-fit ${statusConfig[link.status].badge}`}>
                       {statusConfig[link.status].label}
                     </span>
                   </td>

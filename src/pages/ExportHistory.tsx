@@ -4,7 +4,7 @@
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { Download, FileText, Trash2, RefreshCw, Search, Filter, Calendar } from 'lucide-react'
+import { Download, FileText, Trash2, RefreshCw, Search, Filter, Calendar, ChevronUp, ChevronDown } from 'lucide-react'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { formatDate } from '@/utils/formatters'
 import { 
@@ -15,6 +15,9 @@ import {
 } from '@/utils/exportHistory'
 import { exportToExcel } from '@/utils/export'
 import toast from 'react-hot-toast'
+
+type SortField = 'timestamp' | 'username' | 'exportType' | 'format' | 'recordCount'
+type SortDirection = 'asc' | 'desc'
 
 const EXPORT_TYPE_LABELS: Record<ExportHistory['exportType'], string> = {
   links: '链接列表',
@@ -38,6 +41,8 @@ export default function ExportHistoryPage() {
   const [formatFilter, setFormatFilter] = useState<string>('')
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
+  const [sortField, setSortField] = useState<SortField>('timestamp')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const { showConfirm, showAlert, DialogComponent } = useConfirmDialog()
 
   // 加载导出历史
@@ -50,9 +55,9 @@ export default function ExportHistoryPage() {
     loadHistory()
   }, [loadHistory])
 
-  // 筛选历史记录
+  // 筛选和排序历史记录
   const filteredHistory = useMemo(() => {
-    return history.filter(item => {
+    let result = history.filter(item => {
       const matchesSearch = !searchTerm ||
         item.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -67,7 +72,53 @@ export default function ExportHistoryPage() {
 
       return matchesSearch && matchesType && matchesFormat && matchesStartDate && matchesEndDate
     })
-  }, [history, searchTerm, typeFilter, formatFilter, startDate, endDate])
+
+    // 排序
+    result = [...result].sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (sortField) {
+        case 'timestamp':
+          aValue = new Date(a.timestamp).getTime()
+          bValue = new Date(b.timestamp).getTime()
+          break
+        case 'username':
+          aValue = a.username
+          bValue = b.username
+          break
+        case 'exportType':
+          aValue = a.exportType
+          bValue = b.exportType
+          break
+        case 'format':
+          aValue = a.format
+          bValue = b.format
+          break
+        case 'recordCount':
+          aValue = a.recordCount
+          bValue = b.recordCount
+          break
+        default:
+          return 0
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return result
+  }, [history, searchTerm, typeFilter, formatFilter, startDate, endDate, sortField, sortDirection])
+
+  const handleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('desc')
+    }
+  }, [sortField, sortDirection])
 
   // 统计信息
   const stats = useMemo(() => {
@@ -290,12 +341,82 @@ export default function ExportHistoryPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b bg-gray-50">
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">导出时间</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">导出者</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">导出类型</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">文件格式</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                  <button
+                    onClick={() => handleSort('timestamp')}
+                    className="flex items-center gap-1 hover:text-gray-900 transition-colors"
+                  >
+                    导出时间
+                    {sortField === 'timestamp' && (
+                      sortDirection === 'asc' ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )
+                    )}
+                  </button>
+                </th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                  <button
+                    onClick={() => handleSort('username')}
+                    className="flex items-center gap-1 hover:text-gray-900 transition-colors"
+                  >
+                    导出者
+                    {sortField === 'username' && (
+                      sortDirection === 'asc' ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )
+                    )}
+                  </button>
+                </th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                  <button
+                    onClick={() => handleSort('exportType')}
+                    className="flex items-center gap-1 hover:text-gray-900 transition-colors"
+                  >
+                    导出类型
+                    {sortField === 'exportType' && (
+                      sortDirection === 'asc' ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )
+                    )}
+                  </button>
+                </th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                  <button
+                    onClick={() => handleSort('format')}
+                    className="flex items-center gap-1 hover:text-gray-900 transition-colors"
+                  >
+                    文件格式
+                    {sortField === 'format' && (
+                      sortDirection === 'asc' ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )
+                    )}
+                  </button>
+                </th>
                 <th className="text-left py-3 px-4 font-semibold text-gray-700">文件名</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">记录数</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                  <button
+                    onClick={() => handleSort('recordCount')}
+                    className="flex items-center gap-1 hover:text-gray-900 transition-colors"
+                  >
+                    记录数
+                    {sortField === 'recordCount' && (
+                      sortDirection === 'asc' ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )
+                    )}
+                  </button>
+                </th>
                 <th className="text-left py-3 px-4 font-semibold text-gray-700">操作</th>
               </tr>
             </thead>
@@ -309,12 +430,12 @@ export default function ExportHistoryPage() {
                     {item.username}
                   </td>
                   <td className="py-3 px-4">
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
+                    <span className="px-2 sm:px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 w-fit bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
                       {EXPORT_TYPE_LABELS[item.exportType]}
                     </span>
                   </td>
                   <td className="py-3 px-4">
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                    <span className="px-2 sm:px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 w-fit bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
                       {FORMAT_LABELS[item.format]}
                     </span>
                   </td>

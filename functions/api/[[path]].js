@@ -6,7 +6,8 @@
 import { successResponse, errorResponse, unauthorizedResponse, notFoundResponse } from '../utils/response.js'
 import { verifyAuth, requireAdmin, hashPassword, verifyPassword } from '../utils/auth.js'
 import { generateToken } from '../utils/jwt.js'
-import { UserDB, LinkDB, QuestionnaireDB, NotificationDB } from '../utils/db.js'
+import { UserDB, LinkDB, QuestionnaireDB, NotificationDB, OrderDB } from '../utils/db.js'
+import { getZPayConfig, createZPaySign, verifyCallbackSign, getPackageConfig } from '../utils/zpay.js'
 
 // 初始化数据库实例（KV 会在运行时从环境变量获取）
 function getDB(context) {
@@ -26,6 +27,7 @@ function getDB(context) {
     links: new LinkDB(kv),
     questionnaires: new QuestionnaireDB(kv),
     notifications: new NotificationDB(kv),
+    orders: new OrderDB(kv),
   }
 }
 
@@ -43,6 +45,7 @@ function getInMemoryDB() {
     links: new LinkDB(mockKV),
     questionnaires: new QuestionnaireDB(mockKV),
     notifications: new NotificationDB(mockKV),
+    orders: new OrderDB(mockKV),
   }
 }
 
@@ -92,6 +95,12 @@ export async function onRequest(context) {
 async function routeHandler(pathSegments, method, request, db, env) {
   const [resource, action, ...rest] = pathSegments
 
+  // 支付回调（无需认证）
+  if (resource === 'zpay' && action === 'notify') {
+    const config = getZPayConfig(env)
+    return handleZPayNotify(request, db, config)
+  }
+
   // 认证相关路由（不需要认证）
   if (resource === 'auth') {
     return handleAuthRoutes(action, method, request, db, env)
@@ -100,6 +109,19 @@ async function routeHandler(pathSegments, method, request, db, env) {
   // 公开的问卷列表（不需要认证）
   if (resource === 'questionnaires' && action === 'available') {
     return handleAvailableQuestionnaires(db)
+  }
+
+  // 统一检查：所有 /admin/* 路径必须要求管理员权限
+  if (resource === 'admin') {
+    const adminResult = await requireAdmin(request, env)
+    if (!adminResult.valid) {
+      return adminResult.error
+    }
+    // 继续处理 admin 路由（如果有的话）
+    // 这里可以根据 action 进一步路由到不同的处理器
+    // 例如：/api/admin/users -> handleAdminUserRoutes
+    // 目前先返回 404，后续可以扩展
+    return notFoundResponse('Admin API 路由不存在')
   }
 
   // 其他路由需要认证
@@ -137,9 +159,156 @@ async function routeHandler(pathSegments, method, request, db, env) {
     case 'notifications':
       return handleNotificationRoutes(action, rest, method, request, db, userId)
     
+    case 'zpay':
+      return handleZPayRoutes(action, method, request, db, env, userId, userRole)
+    
+    case 'orders':
+      return handleOrderRoutes(action, rest, method, request, db, userId, userRole)
+    
     default:
       return notFoundResponse('API 路由不存在')
   }
+}
+
+/**
+ * ZPAY 支付回调处理（notify_url）
+ * 文档要求：
+ * - 接收 GET 请求参数
+ * - 验证签名
+ * - 校验金额
+ * - 处理业务逻辑后返回纯文本 "success"
+ */
+async function handleZPayNotify(request, db, zpayConfig) {
+  const url = new URL(request.url)
+  const searchParams = url.searchParams
+
+  // 1. 验证签名
+  const verifyResult = await verifyCallbackSign(searchParams, zpayConfig.KEY)
+  if (!verifyResult.valid) {
+    console.warn('ZPAY 回调签名校验失败:', verifyResult.error)
+    return new Response(verifyResult.error || '签名校验失败', { status: 400 })
+  }
+
+  // 2. 解析核心参数
+  const tradeStatus = searchParams.get('trade_status') || ''
+  const outTradeNo = searchParams.get('out_trade_no') || ''
+  const money = searchParams.get('money') || ''
+  const param = searchParams.get('param') || ''
+  const buyer = searchParams.get('buyer') || ''
+
+  // 只有 TRADE_SUCCESS 才认为支付成功
+  if (tradeStatus !== 'TRADE_SUCCESS') {
+    console.warn('ZPAY 回调状态非成功:', tradeStatus, outTradeNo)
+    return new Response('ignore', { status: 200 })
+  }
+
+  // 3. TODO: 在这里根据 out_trade_no 找到你本地的订单 / 套餐购买记录
+  //    然后校验金额 money 是否与订单金额一致，防止伪造：
+  const order = await db.orders.getOrderByOutTradeNo(outTradeNo)
+  if (!order) {
+    console.warn('ZPAY 回调：未找到本地订单', outTradeNo)
+    // 安全起见，这里不返回 success，保持回调重试，方便你后续排查
+    return new Response('order not found', { status: 404 })
+  }
+
+  const callbackAmountNum = Number(money)
+  const callbackCents = Number.isFinite(callbackAmountNum) ? Math.round(callbackAmountNum * 100) : NaN
+
+  if (!Number.isFinite(callbackCents) || order.amountCents !== callbackCents) {
+    console.error('ZPAY 回调：金额不一致', {
+      outTradeNo,
+      orderAmount: order.amount,
+      orderAmountCents: order.amountCents,
+      callbackAmount: money,
+      callbackCents,
+    })
+    return new Response('amount mismatch', { status: 400 })
+  }
+
+  // 4. 更新订单状态为“已支付”，记录支付时间和买家信息
+  const paidAt = new Date().toISOString()
+  const updatedOrder = await db.orders.updateOrder(order.id, {
+    status: 'paid',
+    paidAt,
+    buyer,
+  })
+
+  // 5. 根据套餐为对应用户增加额度（如果有 userId 和 packageId）
+  if (order.userId && order.packageId) {
+    const pkgConfig = getPackageConfig(order.packageId)
+    if (pkgConfig) {
+      const user = await db.users.getUserById(order.userId)
+      if (user) {
+        let quotaDelta = 0
+        if (pkgConfig.unlimited) {
+          // 年费不限量套餐，这里简单设置为一个很大的额度，具体策略可按需调整
+          quotaDelta = 1000000
+        } else {
+          quotaDelta = pkgConfig.quota || 0
+        }
+
+        const newQuota = (user.remainingQuota || 0) + quotaDelta
+        await db.users.updateUser(order.userId, {
+          remainingQuota: newQuota,
+        })
+      }
+    }
+  }
+
+  console.log('ZPAY 支付成功回调（已更新订单并尝试增加额度）：', {
+    outTradeNo,
+    money,
+    param,
+    orderId: updatedOrder?.id,
+  })
+
+  // 5. 按文档要求返回纯文本 success
+  return new Response('success', {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+    },
+  })
+}
+
+/**
+ * 创建支付订单（在跳转到 ZPAY 之前调用）
+ * 前端会传入：outTradeNo、amount、packageId、packageName、userId
+ */
+async function handleOrderCreate(request, db) {
+  const body = await request.json().catch(() => ({}))
+  const { outTradeNo, amount, packageId, packageName } = body || {}
+
+  if (!outTradeNo || !amount || !packageId) {
+    return errorResponse('缺少必要参数：outTradeNo / amount / packageId', 400)
+  }
+
+  const pkg = getPackageConfig(packageId)
+  const amountNum = Number(amount)
+
+  if (!Number.isFinite(amountNum) || amountNum <= 0) {
+    return errorResponse('金额不合法', 400)
+  }
+
+  // 如果能找到套餐配置，顺便校验一下价格是否一致（仅做告警，不强制）
+  if (pkg && pkg.price && pkg.price !== amountNum) {
+    console.warn('订单价格与套餐配置不一致', {
+      packageId,
+      configPrice: pkg.price,
+      amountNum,
+    })
+  }
+
+  const order = await db.orders.createOrder({
+    outTradeNo,
+    amount: amountNum,
+    packageId,
+    packageName: packageName || pkg?.name || '',
+    // userId 将在路由层强制设置，防止前端伪造
+    status: 'pending',
+  })
+
+  return successResponse(order, '订单创建成功')
 }
 
 /**
@@ -971,6 +1140,135 @@ async function handleNotificationRoutes(action, rest, method, request, db, userI
   }
 
   return notFoundResponse('通知路由不存在')
+}
+
+/**
+ * 订单路由处理
+ * - GET /api/orders         获取当前用户的订单列表（管理员可查看全部或指定用户）
+ * - GET /api/orders/:outTradeNo  根据订单号获取订单详情
+ */
+async function handleOrderRoutes(action, rest, method, request, db, userId, userRole) {
+  // 创建订单（需要已登录用户）
+  if (action === 'create' && method === 'POST') {
+    const baseResponse = await handleOrderCreate(request, db)
+    // 将 userId 强行写入订单（通过二次更新），防止前端伪造 userId
+    try {
+      const cloned = baseResponse.clone()
+      const data = await cloned.json().catch(() => null)
+      if (data?.success && data.data?.id && userId) {
+        await db.orders.updateOrder(data.data.id, { userId })
+      }
+    } catch (e) {
+      console.warn('更新订单 userId 失败：', e)
+    }
+    return baseResponse
+  }
+
+  // 根据订单号获取订单详情
+  if (action && rest.length === 0 && method === 'GET') {
+    const outTradeNo = action
+    const order = await db.orders.getOrderByOutTradeNo(outTradeNo)
+    
+    if (!order) {
+      return notFoundResponse('订单不存在')
+    }
+
+    // 权限检查：非管理员只能查看自己的订单
+    if (userRole !== 'admin' && order.userId !== userId) {
+      return unauthorizedResponse('无权访问该订单')
+    }
+
+    return successResponse(order)
+  }
+
+  // 获取订单列表
+  if (!action && method === 'GET') {
+    const url = new URL(request.url)
+    const targetUserId = url.searchParams.get('userId')
+
+    let ordersIndex = []
+    const indexRaw = await db.orders.kv.get(db.orders.orderIndexKey)
+    if (indexRaw) {
+      try {
+        ordersIndex = JSON.parse(indexRaw)
+      } catch {
+        ordersIndex = []
+      }
+    }
+
+    const allOrders = await Promise.all(
+      ordersIndex.map((id) => db.orders.getOrderById(id)),
+    )
+    const validOrders = allOrders.filter(Boolean)
+
+    // 非管理员：只能看自己的订单
+    let filtered = validOrders
+    if (userRole !== 'admin') {
+      filtered = validOrders.filter((o) => o.userId === userId)
+    } else if (targetUserId) {
+      filtered = validOrders.filter((o) => o.userId === targetUserId)
+    }
+
+    // 按时间倒序
+    filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+
+    return successResponse({
+      orders: filtered,
+      total: filtered.length,
+    })
+  }
+
+  return notFoundResponse('订单路由不存在')
+}
+
+/**
+ * ZPAY 路由处理（签名在后端完成）
+ * - POST /api/zpay/prepare  准备支付参数，返回 submit_url 和签名后的表单字段
+ */
+async function handleZPayRoutes(action, method, request, db, env, userId, userRole) {
+  if (action === 'prepare' && method === 'POST') {
+    const body = await request.json().catch(() => ({}))
+    const { name, money, outTradeNo, notifyUrl, returnUrl, param } = body || {}
+
+    if (!name || !money || !outTradeNo || !notifyUrl || !returnUrl) {
+      return errorResponse('缺少必要参数：name / money / outTradeNo / notifyUrl / returnUrl', 400)
+    }
+
+    const amountNum = Number(money)
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      return errorResponse('金额不合法', 400)
+    }
+
+    const zpayConfig = getZPayConfig(env)
+    const baseParams = {
+      name,
+      money: amountNum.toFixed(2),
+      type: 'alipay',
+      out_trade_no: outTradeNo,
+      notify_url: notifyUrl,
+      pid: zpayConfig.PID,
+      param: param || '',
+      return_url: returnUrl,
+      sign_type: 'MD5',
+    }
+
+    const sign = await createZPaySign(baseParams, zpayConfig.KEY)
+
+    const allParams = {
+      ...baseParams,
+      sign,
+    }
+
+    return successResponse(
+      {
+        submitUrl: `${zpayConfig.GATEWAY}/submit.php`,
+        params: allParams,
+      },
+      '支付参数生成成功',
+    )
+  }
+
+  return notFoundResponse('ZPAY 路由不存在')
 }
 
 

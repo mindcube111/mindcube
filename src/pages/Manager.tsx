@@ -46,7 +46,7 @@ const managerCards: ManagerCard[] = [
   },
   {
     title: '题目管理',
-    description: '导入、批量导入和管理所有题目',
+    description: '统一管理题目导入、批量导入、链接题目和主页题目展示',
     icon: Database,
     roles: ['admin'],
     color: 'bg-purple-500',
@@ -62,7 +62,7 @@ const managerCards: ManagerCard[] = [
         icon: UploadCloud,
       },
       {
-        title: '管理器题目管理',
+        title: '链接题目管理',
         path: '/admin/questions/manage',
         icon: Database,
       },

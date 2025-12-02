@@ -4,7 +4,8 @@
  */
 
 import apiClient from './client'
-import { DashboardStats } from '@/types'
+import type { ApiResponse } from './types'
+import type { DashboardStats } from '@/types'
 
 export interface DashboardStatsResponse extends DashboardStats {
   questionnaireSummary: Array<{
@@ -29,17 +30,8 @@ export interface ChartDataResponse {
 /**
  * 获取 Dashboard 统计数据
  */
-export async function getDashboardStats(): Promise<{
-  success: boolean
-  data?: DashboardStatsResponse
-  message?: string
-}> {
-  const response = await apiClient.get<DashboardStatsResponse>('/dashboard/stats')
-  return {
-    success: response.success,
-    data: response.data,
-    message: response.message,
-  }
+export async function getDashboardStats(): Promise<ApiResponse<DashboardStatsResponse>> {
+  return apiClient.get<DashboardStatsResponse>('/dashboard/stats')
 }
 
 /**
@@ -47,31 +39,15 @@ export async function getDashboardStats(): Promise<{
  */
 export async function getChartData(
   period: '7d' | '15d' | '30d' = '7d'
-): Promise<{ success: boolean; data?: ChartDataResponse; message?: string }> {
-  const response = await apiClient.get<ChartDataResponse>(
-    `/dashboard/chart?period=${period}`
-  )
-  return {
-    success: response.success,
-    data: response.data,
-    message: response.message,
-  }
+): Promise<ApiResponse<ChartDataResponse>> {
+  return apiClient.get<ChartDataResponse>(`/dashboard/chart?period=${period}`)
 }
 
 /**
  * 获取实时数据（WebSocket 或轮询）
  * 注：实际实现可能需要 WebSocket 连接
  */
-export async function getRealtimeStats(): Promise<{
-  success: boolean
-  data?: Partial<DashboardStatsResponse>
-  message?: string
-}> {
-  const response = await apiClient.get<Partial<DashboardStatsResponse>>('/dashboard/realtime')
-  return {
-    success: response.success,
-    data: response.data,
-    message: response.message,
-  }
+export async function getRealtimeStats(): Promise<ApiResponse<Partial<DashboardStatsResponse>>> {
+  return apiClient.get<Partial<DashboardStatsResponse>>('/dashboard/realtime')
 }
 

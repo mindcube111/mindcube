@@ -4,7 +4,17 @@
  */
 
 import apiClient from './client'
-import { Notification, NotificationType } from '@/types'
+import type { ApiResponse } from './types'
+import type { Notification, NotificationType } from '@/types'
+
+// 使用统一的类型定义
+export interface NotificationListResponse {
+  notifications: Notification[]
+  total: number
+  unreadCount: number
+  page: number
+  pageSize: number
+}
 
 export interface NotificationListParams {
   page?: number
@@ -34,7 +44,7 @@ export interface MarkAllReadResponse {
  */
 export async function getNotificationList(
   params?: NotificationListParams
-): Promise<{ success: boolean; data?: NotificationListResponse; message?: string }> {
+): Promise<ApiResponse<NotificationListResponse>> {
   const queryParams = new URLSearchParams()
   if (params?.page) queryParams.append('page', params.page.toString())
   if (params?.pageSize) queryParams.append('pageSize', params.pageSize.toString())
@@ -42,29 +52,14 @@ export async function getNotificationList(
   if (params?.read !== undefined) queryParams.append('read', params.read.toString())
 
   const endpoint = `/notifications${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
-  const response = await apiClient.get<NotificationListResponse>(endpoint)
-
-  return {
-    success: response.success,
-    data: response.data,
-    message: response.message,
-  }
+  return apiClient.get<NotificationListResponse>(endpoint)
 }
 
 /**
  * 获取未读通知数量
  */
-export async function getUnreadCount(): Promise<{
-  success: boolean
-  data?: { count: number }
-  message?: string
-}> {
-  const response = await apiClient.get<{ count: number }>('/notifications/unread-count')
-  return {
-    success: response.success,
-    data: response.data,
-    message: response.message,
-  }
+export async function getUnreadCount(): Promise<ApiResponse<{ count: number }>> {
+  return apiClient.get<{ count: number }>('/notifications/unread-count')
 }
 
 /**
@@ -72,12 +67,8 @@ export async function getUnreadCount(): Promise<{
  */
 export async function markNotificationRead(
   notificationId: string
-): Promise<{ success: boolean; message?: string }> {
-  const response = await apiClient.patch(`/notifications/${notificationId}/read`)
-  return {
-    success: response.success,
-    message: response.message || (response.success ? '已标记为已读' : '标记失败'),
-  }
+): Promise<ApiResponse<void>> {
+  return apiClient.patch(`/notifications/${notificationId}/read`)
 }
 
 /**
@@ -97,17 +88,8 @@ export async function markNotificationsRead(
 /**
  * 标记所有通知为已读
  */
-export async function markAllNotificationsRead(): Promise<{
-  success: boolean
-  message?: string
-  data?: MarkAllReadResponse
-}> {
-  const response = await apiClient.post<MarkAllReadResponse>('/notifications/mark-all-read')
-  return {
-    success: response.success,
-    message: response.message || (response.success ? '已标记全部为已读' : '标记失败'),
-    data: response.data,
-  }
+export async function markAllNotificationsRead(): Promise<ApiResponse<MarkAllReadResponse>> {
+  return apiClient.post<MarkAllReadResponse>('/notifications/mark-all-read')
 }
 
 /**

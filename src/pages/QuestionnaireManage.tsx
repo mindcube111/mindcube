@@ -22,10 +22,16 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   getAllQuestionnaires,
   loadPublishState,
+  loadPublishStateAsync,
   toggleQuestionnairePublish,
+  toggleQuestionnairePublishAsync,
   updateCustomQuestionnaire,
+  updateCustomQuestionnaireAsync,
+  clearConfigCache,
   type QuestionnaireConfig
 } from '@/utils/questionnaireConfig'
+import { sanitizeText, escapeHtml } from '@/utils/xss'
+import { validateTextLength, validateTagText } from '@/utils/validation'
 
 interface QuestionnaireType extends QuestionnaireConfig {
   isPublished: boolean
@@ -66,29 +72,58 @@ export default function QuestionnaireManage() {
     }
   }, [user, navigate])
 
-  const loadQuestionnaires = () => {
-    const state = loadPublishState()
-    const all = getAllQuestionnaires()
+  const loadQuestionnaires = async () => {
+    try {
+      // 优先从 API 加载
+      const state = await loadPublishStateAsync()
+      const all = getAllQuestionnaires()
 
-    const questionnairesWithStatus: QuestionnaireType[] = all.map((q) => {
-      // 系统题目默认上架，自定义题目默认下架
-      const isPublished = q.isCustom 
-        ? (state[q.value] === true)
-        : (state[q.value] !== false)
-      
-      return {
-        ...q,
-        isPublished,
-      }
-    })
+      const questionnairesWithStatus: QuestionnaireType[] = all.map((q) => {
+        // 系统题目默认上架，自定义题目默认下架
+        const isPublished = q.isCustom 
+          ? (state[q.value] === true)
+          : (state[q.value] !== false)
+        
+        return {
+          ...q,
+          isPublished,
+        }
+      })
 
-    setQuestionnaires(questionnairesWithStatus)
+      setQuestionnaires(questionnairesWithStatus)
+    } catch (error) {
+      console.error('加载问卷配置失败', error)
+      // 降级到同步版本
+      const state = loadPublishState()
+      const all = getAllQuestionnaires()
+
+      const questionnairesWithStatus: QuestionnaireType[] = all.map((q) => {
+        const isPublished = q.isCustom 
+          ? (state[q.value] === true)
+          : (state[q.value] !== false)
+        
+        return {
+          ...q,
+          isPublished,
+        }
+      })
+
+      setQuestionnaires(questionnairesWithStatus)
+    }
   }
 
-  const handleTogglePublish = (value: string) => {
-    const isPublished = toggleQuestionnairePublish(value)
-    loadQuestionnaires() // 重新加载以获取最新状态
-    toast.success(`问卷已${isPublished ? '上架' : '下架'}`)
+  const handleTogglePublish = async (value: string) => {
+    try {
+      const isPublished = await toggleQuestionnairePublishAsync(value)
+      await loadQuestionnaires() // 重新加载以获取最新状态
+      toast.success(`问卷已${isPublished ? '上架' : '下架'}`)
+    } catch (error) {
+      console.error('切换上架状态失败', error)
+      // 降级到同步版本
+      const isPublished = toggleQuestionnairePublish(value)
+      loadQuestionnaires()
+      toast.success(`问卷已${isPublished ? '上架' : '下架'}`)
+    }
   }
 
   const handleEdit = (questionnaire: QuestionnaireType) => {
@@ -103,25 +138,66 @@ export default function QuestionnaireManage() {
     })
   }
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingQuestionnaire) return
 
+    // 验证描述长度（最多500字符）
+    const descValidation = validateTextLength(editForm.description, 0, 500, '描述')
+    if (!descValidation.isValid) {
+      toast.error(descValidation.message || '描述格式不正确')
+      return
+    }
+
+    // 验证标签长度
+    for (const feature of editForm.features) {
+      const tagValidation = validateTagText(feature)
+      if (!tagValidation.isValid) {
+        toast.error(`标签"${feature}"${tagValidation.message || '格式不正确'}`)
+        return
+      }
+    }
+
+    // 清理和转义输入
+    const sanitizedLabel = sanitizeText(editForm.label.trim())
+    const sanitizedDescription = sanitizeText(editForm.description.trim())
+    const sanitizedFeatures = editForm.features.map(f => escapeHtml(sanitizeText(f)))
+    const sanitizedDuration = sanitizeText(editForm.duration.trim())
+
     try {
-      updateCustomQuestionnaire(editingQuestionnaire.value, {
-        label: editForm.label,
-        description: editForm.description,
-        features: editForm.features,
-        duration: editForm.duration,
+      const success = await updateCustomQuestionnaireAsync(editingQuestionnaire.value, {
+        label: sanitizedLabel,
+        description: sanitizedDescription,
+        features: sanitizedFeatures,
+        duration: sanitizedDuration,
         price: editForm.price,
         questions: editForm.questions,
       })
       
-      loadQuestionnaires()
-      setEditingQuestionnaire(null)
-      toast.success('问卷信息已更新，主页将同步显示')
+      if (success) {
+        await loadQuestionnaires()
+        setEditingQuestionnaire(null)
+        toast.success('问卷信息已更新，主页将同步显示')
+      } else {
+        toast.error('保存失败，请重试')
+      }
     } catch (error) {
       console.error('保存失败', error)
-      toast.error('保存失败，请重试')
+      // 降级到同步版本
+      try {
+        updateCustomQuestionnaire(editingQuestionnaire.value, {
+          label: sanitizedLabel,
+          description: sanitizedDescription,
+          features: sanitizedFeatures,
+          duration: sanitizedDuration,
+          price: editForm.price,
+          questions: editForm.questions,
+        })
+        loadQuestionnaires()
+        setEditingQuestionnaire(null)
+        toast.success('问卷信息已更新，主页将同步显示')
+      } catch (e) {
+        toast.error('保存失败，请重试')
+      }
     }
   }
 
@@ -140,9 +216,26 @@ export default function QuestionnaireManage() {
   const handleAddFeature = () => {
     const feature = prompt('请输入特性标签：')
     if (feature && feature.trim()) {
+      // 验证标签文本
+      const validation = validateTagText(feature.trim())
+      if (!validation.isValid) {
+        toast.error(validation.message || '标签格式不正确')
+        return
+      }
+      
+      // 清理和转义标签文本
+      const sanitized = sanitizeText(feature.trim())
+      const escaped = escapeHtml(sanitized)
+      
+      // 检查是否已存在
+      if (editForm.features.includes(escaped)) {
+        toast.error('该标签已存在')
+        return
+      }
+      
       setEditForm(prev => ({
         ...prev,
-        features: [...prev.features, feature.trim()],
+        features: [...prev.features, escaped],
       }))
     }
   }
@@ -173,7 +266,7 @@ export default function QuestionnaireManage() {
     return true
   })
 
-  const handleBatchPublish = (publish: boolean) => {
+  const handleBatchPublish = async (publish: boolean) => {
     const toUpdate = filteredQuestionnaires
       .filter(q => publish ? !q.isPublished : q.isPublished)
       .map(q => q.value)
@@ -183,20 +276,55 @@ export default function QuestionnaireManage() {
       return
     }
 
-    toUpdate.forEach(value => {
-      const currentState = loadPublishState()
-      const isSystem = questionnaires.find(q => q.value === value)?.isCustom === false
-      const current = isSystem 
-        ? (currentState[value] !== false)
-        : (currentState[value] === true)
+    try {
+      // 构建批量更新请求
+      const states: Record<string, boolean> = {}
+      const currentState = await loadPublishStateAsync()
       
-      if (current !== publish) {
-        toggleQuestionnairePublish(value)
+      toUpdate.forEach(value => {
+        const isSystem = questionnaires.find(q => q.value === value)?.isCustom === false
+        const current = isSystem 
+          ? (currentState[value] !== false)
+          : (currentState[value] === true)
+        
+        if (current !== publish) {
+          states[value] = publish
+        }
+      })
+
+      if (Object.keys(states).length > 0) {
+        // 尝试批量更新 API
+        const { batchUpdatePublishState } = await import('@/services/api/questionnaireConfig')
+        const response = await batchUpdatePublishState({ states })
+        if (response.success) {
+          clearConfigCache()
+          await loadQuestionnaires()
+          toast.success(`已批量${publish ? '上架' : '下架'} ${Object.keys(states).length} 个问卷`)
+          return
+        }
       }
-    })
-    
-    loadQuestionnaires()
-    toast.success(`已批量${publish ? '上架' : '下架'} ${toUpdate.length} 个问卷`)
+
+      // 降级到逐个更新
+      for (const value of toUpdate) {
+        const currentState = loadPublishState()
+        const isSystem = questionnaires.find(q => q.value === value)?.isCustom === false
+        const current = isSystem 
+          ? (currentState[value] !== false)
+          : (currentState[value] === true)
+        
+        if (current !== publish) {
+          await toggleQuestionnairePublishAsync(value).catch(() => {
+            toggleQuestionnairePublish(value)
+          })
+        }
+      }
+      
+      await loadQuestionnaires()
+      toast.success(`已批量${publish ? '上架' : '下架'} ${toUpdate.length} 个问卷`)
+    } catch (error) {
+      console.error('批量更新失败', error)
+      toast.error('批量更新失败，请重试')
+    }
   }
 
   const stats = {
@@ -418,14 +546,25 @@ export default function QuestionnaireManage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  描述
+                  描述 <span className="text-gray-500 text-xs">(最多500字符)</span>
                 </label>
                 <textarea
                   value={editForm.description}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value.length <= 500) {
+                      setEditForm(prev => ({ ...prev, description: value }))
+                    } else {
+                      toast.error('描述长度不能超过500个字符')
+                    }
+                  }}
                   rows={3}
+                  maxLength={500}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  {editForm.description.length}/500
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

@@ -10,6 +10,7 @@ import { getLinkByUrl, updateLinkStatus } from '@/utils/links'
 import { getAllQuestionnaires } from '@/utils/questionnaireConfig'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import toast from 'react-hot-toast'
+import { analytics, FunnelStep } from '@/utils/analytics'
 
 export default function Test() {
   const { linkId } = useParams<{ linkId: string }>()
@@ -20,6 +21,8 @@ export default function Test() {
   const [answers, setAnswers] = useState<Record<number, number>>({})
   const [isCompleted, setIsCompleted] = useState(false)
   const [questions, setQuestions] = useState<any[]>([])
+  const [link, setLink] = useState<any>(null)
+  const [paidLink, setPaidLink] = useState<any>(null)
 
   useEffect(() => {
     if (!linkId) {
@@ -30,32 +33,35 @@ export default function Test() {
 
     // 检查链接是否有效（从付费链接或普通链接中查找）
     const testUrl = `${window.location.origin}/test/${linkId}`
-    const link = getLinkByUrl(testUrl)
+    const foundLink = getLinkByUrl(testUrl)
     
     // 也检查付费链接
     const paidLinks = JSON.parse(localStorage.getItem('paid_test_links') || '[]')
-    const paidLink = paidLinks.find((l: any) => l.id === linkId)
+    const foundPaidLink = paidLinks.find((l: any) => l.id === linkId)
+    
+    setLink(foundLink)
+    setPaidLink(foundPaidLink)
 
-    if (!link && !paidLink) {
+    if (!foundLink && !foundPaidLink) {
       showAlert('错误', '测试链接不存在或已失效', 'alert')
       navigate('/')
       return
     }
 
-    if (link && link.status === 'used') {
+    if (foundLink && foundLink.status === 'used') {
       showAlert('提示', '该测试链接已被使用', 'info')
       navigate('/')
       return
     }
 
-    if (paidLink && paidLink.status === 'used') {
+    if (foundPaidLink && foundPaidLink.status === 'used') {
       showAlert('提示', '该测试链接已被使用', 'info')
       navigate('/')
       return
     }
 
     // 获取问卷类型
-    const type = link?.questionnaireType || paidLink?.questionnaireType
+    const type = foundLink?.questionnaireType || foundPaidLink?.questionnaireType
     if (!type) {
       showAlert('错误', '无法获取问卷类型', 'alert')
       navigate('/')
@@ -121,6 +127,15 @@ export default function Test() {
 
     setIsCompleted(true)
     toast.success('测试完成！')
+
+    // 追踪完成测评
+    const type = link?.questionnaireType || paidLink?.questionnaireType
+    analytics.trackFunnelStep(
+      FunnelStep.TEST_COMPLETE,
+      type,
+      undefined,
+      { linkId, questionCount: questions.length }
+    )
 
     // 这里应该生成报告并跳转到报告页面
     setTimeout(() => {

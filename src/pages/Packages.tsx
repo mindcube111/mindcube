@@ -1,24 +1,103 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Check, ShoppingCart, Crown } from 'lucide-react'
 import { Package } from '@/types'
 import { mockPackages } from '@/data/mockData'
 import { formatNumber } from '@/utils/formatters'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/contexts/AuthContext'
+import { getCurrentUser } from '@/services/api/auth'
+import { getMyOrders, type Order } from '@/services/api/orders'
 
 export default function Packages() {
   const [selectedId, setSelectedId] = useState<string>(
     mockPackages.find((pkg) => pkg.recommended)?.id ?? mockPackages[0].id,
   )
   const { showAlert, DialogComponent } = useConfirmDialog()
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const [remainingQuota, setRemainingQuota] = useState<number>(user?.remainingQuota ?? 0)
+  const [orders, setOrders] = useState<
+    Array<{
+      id: string | number
+      name: string
+      quota: number
+      price: number
+      time: string
+      status: string
+      unlimited?: boolean
+    }>
+  >([])
+
+  useEffect(() => {
+    const fetchData = async () => {
+      // 剩余额度优先从后端获取，失败则回退到前端 user
+      try {
+        const res = await getCurrentUser()
+        if (res.success && res.data && typeof res.data.remainingQuota === 'number') {
+          setRemainingQuota(res.data.remainingQuota)
+        } else if (user?.remainingQuota != null) {
+          setRemainingQuota(user.remainingQuota)
+        }
+      } catch {
+        if (user?.remainingQuota != null) {
+          setRemainingQuota(user.remainingQuota)
+        }
+      }
+
+      // 购买记录从订单接口获取，失败则使用示例数据
+      try {
+        const res = await getMyOrders()
+        if (res.success && res.data?.orders) {
+          const list = res.data.orders.map((order: Order) => {
+            const pkg = mockPackages.find((p) => p.id === order.packageId)
+            return {
+              id: order.id,
+              name: order.packageName || pkg?.name || order.packageId || '未知套餐',
+              quota: pkg?.quota ?? 0,
+              price: order.amount,
+              time: new Date(order.createdAt).toLocaleString(),
+              status: order.status === 'paid' ? '已完成' : order.status === 'pending' ? '待支付' : '已失败',
+              unlimited: pkg?.unlimited,
+            }
+          })
+          setOrders(list)
+          return
+        }
+      } catch {
+        // ignore and use fallback
+      }
+
+      setOrders([
+        { id: 1, name: '标准套餐', quota: 1300, price: 199, time: '2024-03-05', status: '已完成' },
+        { id: 2, name: '旗舰套餐', quota: 5500, price: 599, time: '2024-02-22', status: '已完成' },
+        { id: 3, name: '年费套餐', quota: 0, price: 1688, time: '2024-01-18', status: '已完成', unlimited: true },
+      ])
+    }
+
+    void fetchData()
+  }, [user])
 
   const handlePurchase = async (pkg: Package) => {
     const quotaLabel = pkg.unlimited ? '不限量' : `${formatNumber(pkg.quota)} 条`
-    await showAlert(
-      '购买套餐',
-      `准备购买套餐：${pkg.name}（${quotaLabel}，¥${pkg.price}）\n\n（支付功能开发中）`,
+
+    const confirmed = await showAlert(
+      '确认购买套餐',
+      `准备购买套餐：${pkg.name}（${quotaLabel}，¥${pkg.price}）\n\n将跳转至支付页面，仅支持支付宝支付。`,
       'info'
     )
-    // 这里可以跳转到支付页面
+
+    if (!confirmed) return
+
+    navigate('/payment', {
+      state: {
+        from: 'packages',
+        packageId: pkg.id,
+        name: pkg.name,
+        money: pkg.price.toFixed(2),
+        param: `套餐购买:${pkg.name}`,
+      },
+    })
   }
 
   return (
@@ -35,7 +114,7 @@ export default function Packages() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-white/80">当前剩余链接</p>
-            <p className="text-4xl font-bold mt-2">480</p>
+            <p className="text-4xl font-bold mt-2">{formatNumber(remainingQuota)}</p>
             <p className="text-white/70 mt-2">链接适用于所有问卷类型</p>
           </div>
           <div className="text-right">
@@ -167,25 +246,29 @@ export default function Packages() {
               </tr>
             </thead>
             <tbody>
-              {[
-                { id: 1, name: '标准套餐', quota: 1300, price: 199, time: '2024-03-05', status: '已完成' },
-                { id: 2, name: '旗舰套餐', quota: 5500, price: 599, time: '2024-02-22', status: '已完成' },
-                { id: 3, name: '年费套餐', quota: 0, price: 1688, time: '2024-01-18', status: '已完成', unlimited: true },
-              ].map((record) => (
-                <tr key={record.id} className="border-b hover:bg-gray-50">
-                  <td className="py-3 px-4 text-gray-900">{record.name}</td>
-                  <td className="py-3 px-4 text-gray-600">
-                    {record.unlimited ? '不限量' : `${formatNumber(record.quota)} 条`}
-                  </td>
-                  <td className="py-3 px-4 text-gray-900 font-medium">¥{record.price}</td>
-                  <td className="py-3 px-4 text-gray-600">{record.time}</td>
-                  <td className="py-3 px-4">
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      {record.status}
-                    </span>
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-gray-500">
+                    暂无购买记录
                   </td>
                 </tr>
-              ))}
+              ) : (
+                orders.map((record) => (
+                  <tr key={record.id} className="border-b hover:bg-gray-50">
+                    <td className="py-3 px-4 text-gray-900">{record.name}</td>
+                    <td className="py-3 px-4 text-gray-600">
+                      {record.unlimited ? '不限量' : `${formatNumber(record.quota)} 条`}
+                    </td>
+                    <td className="py-3 px-4 text-gray-900 font-medium">¥{record.price}</td>
+                    <td className="py-3 px-4 text-gray-600">{record.time}</td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        {record.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

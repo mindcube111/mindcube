@@ -3,12 +3,13 @@ import { Link as RouterLink } from 'react-router-dom'
 import { Link as LinkIcon, BarChart3, TrendingUp, Activity, RefreshCw, Sparkles, CalendarRange, ArrowRight, Download } from 'lucide-react'
 import StatsCard from '@/components/StatsCard'
 import { formatNumber, formatPercentage } from '@/utils/formatters'
-import { useAuth } from '@/contexts/AuthContext'
 import { exportDashboardToPDF } from '@/utils/export'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import ChartWrapper from '@/components/ChartWrapper'
-import { useRealtimeData } from '@/utils/realtime'
-import { getLinkStats, loadLinks } from '@/utils/links'
+import { getDashboardStats, type DashboardStatsResponse } from '@/services/api/dashboard'
+import { useApiCache } from '@/hooks/useApiCache'
+import { handleError } from '@/utils/errorHandler'
+import { logger } from '@/utils/logger'
 import {
   LineChart,
   Line,
@@ -54,7 +55,6 @@ const liveMetrics = [
 ]
 
 export default function Dashboard() {
-  const { user } = useAuth()
   const [timeframe, setTimeframe] = useState<'7d' | '15d' | '30d'>('7d')
   const [refreshing, setRefreshing] = useState(false)
   const chartData = useMemo(() => chartPresets[timeframe], [timeframe])
@@ -64,80 +64,51 @@ export default function Dashboard() {
   const lineStart = '#4A90E2'
   const lineEnd = '#1E3A5F'
 
-  const { data: realtimeStats } = useRealtimeData(
-    'dashboard-stats',
-    () => {
-      // 从真实数据计算所有统计信息
-      const links = loadLinks()
-      const linkStats = getLinkStats()
-      
-      // 计算今日使用的链接数
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const todayUsedLinks = links.filter((link) => {
-        if (!link.usedAt) return false
-        const usedDate = new Date(link.usedAt)
-        usedDate.setHours(0, 0, 0, 0)
-        return usedDate.getTime() === today.getTime()
-      }).length
-      
-      // 计算参与率（已使用的链接数 / 总链接数）
-      const participationRate = linkStats.total > 0 
-        ? linkStats.used / linkStats.total 
-        : 0
-      
-      // 获取用户的实际剩余额度（管理员显示9999表示无限，普通用户显示实际值）
-      const remainingQuota = user?.role === 'admin' 
-        ? 9999 
-        : (user?.remainingQuota ?? 0)
-      
-      // 返回真实数据，如果没有数据则为 0
-      return {
-        totalLinks: linkStats.total,
-        remainingQuota: remainingQuota,
-        todayUsedLinks: todayUsedLinks,
-        unusedLinks: linkStats.unused,
-        participationRate: participationRate,
-      }
-    },
-    { interval: 30000 }
-  )
+  // 使用缓存 hook 获取统计数据
+  const { data: statsFromApi, isLoading: isLoadingStats, mutate: refreshStats } = useApiCache({
+    key: 'dashboard-stats',
+    fetcher: getDashboardStats,
+    cacheTime: 2 * 60 * 1000, // 2分钟缓存
+    revalidateOnFocus: true,
+  })
 
-  // 使用真实数据，如果没有数据则为默认值（全为0）
-  const stats = realtimeStats || {
+  const stats = statsFromApi || {
     totalLinks: 0,
-    remainingQuota: user?.role === 'admin' ? 9999 : (user?.remainingQuota ?? 0),
+    remainingQuota: 0,
     todayUsedLinks: 0,
     unusedLinks: 0,
     participationRate: 0,
   }
 
-  // 从真实数据计算问卷使用概览
-  const questionnaireSummary = useMemo(() => {
-    const links = loadLinks()
-    const typeMap: Record<string, { total: number; used: number }> = {}
-    
-    links.forEach(link => {
-      if (!typeMap[link.questionnaireType]) {
-        typeMap[link.questionnaireType] = { total: 0, used: 0 }
-      }
-      typeMap[link.questionnaireType].total++
-      if (link.status === 'used') {
-        typeMap[link.questionnaireType].used++
-      }
-    })
-    
-    return Object.entries(typeMap).map(([type, data]) => ({
-      type,
-      participants: data.total,
-      completion: data.total > 0 ? data.used / data.total : 0,
-      avgTime: 0, // 平均时长暂时设为0，如需要可从报告数据中计算
-    }))
-  }, [])
+  // 如果正在加载，显示加载状态
+  if (isLoadingStats && !statsFromApi) {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <div className="card text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">加载中...</p>
+        </div>
+      </div>
+    )
+  }
 
-  const handleRefresh = () => {
+  const questionnaireSummary = useMemo(() => {
+    if (!statsFromApi?.questionnaireSummary) return []
+    return statsFromApi.questionnaireSummary.map((q) => ({
+      type: q.type,
+      participants: q.totalLinks,
+      completion: q.totalLinks > 0 ? q.completionRate / 100 : 0,
+      avgTime: 0,
+    }))
+  }, [statsFromApi])
+
+  const handleRefresh = async () => {
     setRefreshing(true)
-    setTimeout(() => setRefreshing(false), 800)
+    try {
+      await refreshStats(true) // 强制刷新
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   const handleExportPDF = () => {
@@ -145,7 +116,9 @@ export default function Dashboard() {
       exportDashboardToPDF(stats, chartData)
       showAlert('导出成功', 'Dashboard数据已导出为PDF文件', 'success')
     } catch (error) {
-      showAlert('导出失败', error instanceof Error ? error.message : '导出过程中出现错误', 'alert')
+      logger.error('导出 Dashboard 失败', error)
+      const errorMessage = handleError(error, { action: 'exportDashboard' })
+      showAlert('导出失败', errorMessage, 'alert')
     }
   }
 

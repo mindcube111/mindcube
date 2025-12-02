@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react'
 import { User } from '@/types'
+import { logger } from '@/utils/logger'
 
 interface RegisterPayload {
   username: string
@@ -92,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           remainingQuota: parsed?.remainingQuota ?? 0,
         })
       } catch (error) {
-        console.error('Failed to parse saved user:', error)
+        logger.error('Failed to parse saved user', error)
         localStorage.removeItem('user')
       }
     }
@@ -102,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         setCustomUsers(JSON.parse(savedCustomUsers))
       } catch (error) {
-        console.error('Failed to parse custom users:', error)
+        logger.error('Failed to parse custom users', error)
         localStorage.removeItem(CUSTOM_USERS_KEY)
       }
     }
@@ -249,7 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // 触发 accounts 重新计算（通过更新版本号）
         setDefaultLoginTimesVersion(prev => prev + 1)
       } catch (error) {
-        console.error('Failed to update default account quota:', error)
+        logger.error('Failed to update default account quota', error, { id, amount })
       }
     } else {
       // 更新注册用户的额度
@@ -312,7 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // 触发 accounts 重新计算
         setDefaultLoginTimesVersion(prev => prev + 1)
       } catch (error) {
-        console.error('Failed to update default account used quota:', error)
+          logger.error('Failed to update default account used quota', error, { id, amount })
       }
     } else {
       // 更新注册用户的使用额度
@@ -405,7 +406,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // 触发 accounts 重新计算
           setDefaultLoginTimesVersion(prev => prev + 1)
         } catch (error) {
-          console.error('Failed to save default account login time:', error)
+          logger.error('Failed to save default account login time', error, { accountId: account.id })
         }
       } else {
         // 更新注册用户的登录时间（持久化到 customUsers）
@@ -433,7 +434,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false)
       return { success: true }
     } catch (error) {
-      console.error('Login error:', error)
+      logger.error('Login error', error, { username })
       setIsLoading(false)
       return { success: false, message: '登录失败，请稍后重试' }
     }

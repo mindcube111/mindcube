@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import {
   LayoutDashboard,
   Link as LinkIcon,
@@ -12,6 +13,8 @@ import {
   Database,
   BarChart3,
   Download,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -20,17 +23,13 @@ const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
   { path: '/links/generate', icon: LinkIcon, label: '生成链接' },
   { path: '/links/manage', icon: LinkIcon, label: '链接管理' },
+  { path: '/admin/users', icon: Users, label: '用户管理', roles: ['admin'] as Array<'admin' | 'user'> },
   { path: '/statistics', icon: BarChart3, label: '统计分析' },
   { path: '/packages', icon: ShoppingCart, label: '购买套餐' },
   { path: '/notifications', icon: Bell, label: '通知中心' },
   { path: '/admin/questions/import', icon: UploadCloud, label: '题目导入', roles: ['admin'] as Array<'admin' | 'user'> },
   { path: '/links/batch-import', icon: UploadCloud, label: '批量导入', roles: ['admin'] as Array<'admin' | 'user'> },
-  { path: '/admin/questions/manage', icon: Database, label: '题目管理', roles: ['admin'] as Array<'admin' | 'user'> },
-  { path: '/admin/users', icon: Users, label: '用户管理', roles: ['admin'] as Array<'admin' | 'user'> },
-  { path: '/admin/reports', icon: FileText, label: '报告管理', roles: ['admin'] as Array<'admin' | 'user'> },
-  { path: '/admin/export-history', icon: Download, label: '导出历史', roles: ['admin'] as Array<'admin' | 'user'> },
-  { path: '/admin/audit', icon: FileText, label: '操作日志', roles: ['admin'] as Array<'admin' | 'user'> },
-  { path: '/admin/backup', icon: Database, label: '数据备份', roles: ['admin'] as Array<'admin' | 'user'> },
+  { path: '/admin/questions/manage', icon: Database, label: '链接题目管理', roles: ['admin'] as Array<'admin' | 'user'> },
 ]
 
 interface SidebarProps {
@@ -40,6 +39,7 @@ interface SidebarProps {
 export default function Sidebar({ onClose }: SidebarProps) {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const [isDataGroupOpen, setIsDataGroupOpen] = useState(true)
 
   const handleLogout = () => {
     logout()
@@ -52,6 +52,9 @@ export default function Sidebar({ onClose }: SidebarProps) {
         <img
           src="/logo-cube.jpg"
           alt="MIND CUBE Logo"
+          width="40"
+          height="40"
+          loading="eager"
           className="w-10 h-10 rounded-2xl shadow-lg"
         />
         <div>
@@ -73,6 +76,9 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=calm&backgroundColor=fdf2f8&scale=100'
               }
               alt={user.name || user.username}
+              width="40"
+              height="40"
+              loading="lazy"
               className="w-10 h-10 rounded-full object-cover border border-white/40 bg-white"
             />
             <div className="flex-1 min-w-0">
@@ -111,6 +117,92 @@ export default function Sidebar({ onClose }: SidebarProps) {
             </NavLink>
           )
         })}
+
+        {/* 数据管理分组，仅管理员可见 */}
+        {user?.role === 'admin' && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => setIsDataGroupOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-white/90 hover:bg-white/10 transition-colors mb-1"
+            >
+              <span className="flex items-center gap-3">
+                <Database className="w-5 h-5" />
+                <span>数据管理</span>
+              </span>
+              {isDataGroupOpen ? (
+                <ChevronUp className="w-4 h-4 text-white/80" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-white/80" />
+              )}
+            </button>
+
+            {isDataGroupOpen && (
+              <div className="ml-8 mt-1 space-y-1">
+                <NavLink
+                  to="/admin/reports"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                      isActive
+                        ? 'bg-white text-primary-600 font-semibold shadow-md'
+                        : 'text-white/80 hover:bg-white/10'
+                    )
+                  }
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>报告管理</span>
+                </NavLink>
+                <NavLink
+                  to="/admin/export-history"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                      isActive
+                        ? 'bg-white text-primary-600 font-semibold shadow-md'
+                        : 'text-white/80 hover:bg-white/10'
+                    )
+                  }
+                >
+                  <Download className="w-4 h-4" />
+                  <span>导出历史</span>
+                </NavLink>
+                <NavLink
+                  to="/admin/audit"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                      isActive
+                        ? 'bg-white text-primary-600 font-semibold shadow-md'
+                        : 'text-white/80 hover:bg-white/10'
+                    )
+                  }
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>操作日志</span>
+                </NavLink>
+                <NavLink
+                  to="/admin/backup"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                      isActive
+                        ? 'bg-white text-primary-600 font-semibold shadow-md'
+                        : 'text-white/80 hover:bg-white/10'
+                    )
+                  }
+                >
+                  <Database className="w-4 h-4" />
+                  <span>数据备份</span>
+                </NavLink>
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       <div className="p-4 border-t border-white/10">

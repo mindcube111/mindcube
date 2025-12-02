@@ -4,6 +4,7 @@
  */
 
 import { formatDate as baseFormatDate, formatFileSize, generateId } from './formatters'
+import { sanitizeText, escapeHtml } from './xss'
 
 /**
  * 标准化后的导入题目结构
@@ -61,36 +62,51 @@ export function formatSize(bytes: number): string {
 
 /**
  * 把原始记录（从 CSV/JSON 来）转换成标准 ImportedQuestion
+ * 对文本字段进行 XSS 过滤和转义
  */
 function normalizeRecord(record: any, index: number): ImportedQuestion {
   const id = String(record.id || generateId() || `${Date.now()}-${index}`)
-  const title = String(record.title || record.题目 || record.问题 || '').trim()
+  
+  // 清理和转义题目标题
+  const rawTitle = String(record.title || record.题目 || record.问题 || '').trim()
+  const title = escapeHtml(sanitizeText(rawTitle))
+  
   const type = (record.type || record.类型 || 'single') as ImportedQuestion['type']
 
-  // 选项：支持数组或用 | / , 分隔的字符串
+  // 选项：支持数组或用 | / , 分隔的字符串，并进行转义
   let options: string[] = []
   if (Array.isArray(record.options)) {
-    options = record.options.map(String)
+    options = record.options.map(opt => escapeHtml(sanitizeText(String(opt).trim()))).filter(Boolean)
   } else if (typeof record.options === 'string' && record.options.trim()) {
-    options = record.options.split(/[|,，]/).map((s: string) => s.trim()).filter(Boolean)
+    options = record.options.split(/[|,，]/)
+      .map((s: string) => escapeHtml(sanitizeText(s.trim())))
+      .filter(Boolean)
   } else if (typeof record.optionsRaw === 'string' && record.optionsRaw.trim()) {
-    options = record.optionsRaw.split(/[|,，]/).map((s: string) => s.trim()).filter(Boolean)
+    options = record.optionsRaw.split(/[|,，]/)
+      .map((s: string) => escapeHtml(sanitizeText(s.trim())))
+      .filter(Boolean)
   }
 
-  const answer = String(record.answer || record.答案 || '').trim()
+  // 清理和转义答案
+  const rawAnswer = String(record.answer || record.答案 || '').trim()
+  const answer = escapeHtml(sanitizeText(rawAnswer))
 
-  // 标签：支持数组或用 , / 、 分隔的字符串
+  // 标签：支持数组或用 , / 、 分隔的字符串，并进行转义
   let tags: string[] = []
   if (Array.isArray(record.tags)) {
-    tags = record.tags.map(String)
+    tags = record.tags.map(tag => escapeHtml(sanitizeText(String(tag).trim()))).filter(Boolean)
   } else if (typeof record.tags === 'string' && record.tags.trim()) {
-    tags = record.tags.split(/[|,，、]/).map((s: string) => s.trim()).filter(Boolean)
+    tags = record.tags.split(/[|,，、]/)
+      .map((s: string) => escapeHtml(sanitizeText(s.trim())))
+      .filter(Boolean)
   }
 
   const difficultyRaw = record.difficulty ?? record.难度
   const difficulty = typeof difficultyRaw === 'number' ? difficultyRaw : difficultyRaw ? Number(difficultyRaw) || undefined : undefined
 
-  const analysis = record.analysis || record.解析 || ''
+  // 清理和转义解析文本
+  const rawAnalysis = String(record.analysis || record.解析 || '').trim()
+  const analysis = escapeHtml(sanitizeText(rawAnalysis))
 
   const createdAt =
     typeof record.createdAt === 'number'

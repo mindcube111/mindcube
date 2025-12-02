@@ -23,6 +23,43 @@ dist-ssr
 *.sln
 *.sw?
 
+# Cursor IDE
+.cursor/
+.cache/
 
+# Wrangler
+.wrangler/
 
+# System files
+AppData/
+*.backup
+Desktop/
+Documents/
+Downloads/
+Pictures/
+Videos/
+Music/
+Contacts/
+Favorites/
+Links/
+Searches/
+3D Objects/
+Saved Games/
+OneDrive/
+WPSDrive/
+WPS Cloud Files/
+.vscode/
+.cursor/
+.cache/
+.wrangler/
+.ssh/
+.python_history
+.lesshst
+.gitconfig
+.idlerc/
+NTUSER.DAT*
+ntuser.*
+
+# Project specific
+package.json.backup
 

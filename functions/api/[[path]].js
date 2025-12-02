@@ -276,39 +276,44 @@ async function handleZPayNotify(request, db, zpayConfig) {
  * 前端会传入：outTradeNo、amount、packageId、packageName、userId
  */
 async function handleOrderCreate(request, db) {
-  const body = await request.json().catch(() => ({}))
-  const { outTradeNo, amount, packageId, packageName } = body || {}
+  try {
+    const body = await request.json().catch(() => ({}))
+    const { outTradeNo, amount, packageId, packageName } = body || {}
 
-  if (!outTradeNo || !amount || !packageId) {
-    return errorResponse('缺少必要参数：outTradeNo / amount / packageId', 400)
-  }
+    if (!outTradeNo || !amount || !packageId) {
+      return errorResponse('缺少必要参数：outTradeNo / amount / packageId', 400)
+    }
 
-  const pkg = getPackageConfig(packageId)
-  const amountNum = Number(amount)
+    const pkg = getPackageConfig(packageId)
+    const amountNum = Number(amount)
 
-  if (!Number.isFinite(amountNum) || amountNum <= 0) {
-    return errorResponse('金额不合法', 400)
-  }
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      return errorResponse('金额不合法', 400)
+    }
 
-  // 如果能找到套餐配置，顺便校验一下价格是否一致（仅做告警，不强制）
-  if (pkg && pkg.price && pkg.price !== amountNum) {
-    console.warn('订单价格与套餐配置不一致', {
+    // 如果能找到套餐配置，顺便校验一下价格是否一致（仅做告警，不强制）
+    if (pkg && pkg.price && pkg.price !== amountNum) {
+      console.warn('订单价格与套餐配置不一致', {
+        packageId,
+        configPrice: pkg.price,
+        amountNum,
+      })
+    }
+
+    const order = await db.orders.createOrder({
+      outTradeNo,
+      amount: amountNum,
       packageId,
-      configPrice: pkg.price,
-      amountNum,
+      packageName: packageName || pkg?.name || '',
+      // userId 将在路由层强制设置，防止前端伪造
+      status: 'pending',
     })
+
+    return successResponse(order, '订单创建成功')
+  } catch (error) {
+    console.error('创建订单失败:', error)
+    return errorResponse(`创建订单失败：${error.message || '未知错误'}`, 500)
   }
-
-  const order = await db.orders.createOrder({
-    outTradeNo,
-    amount: amountNum,
-    packageId,
-    packageName: packageName || pkg?.name || '',
-    // userId 将在路由层强制设置，防止前端伪造
-    status: 'pending',
-  })
-
-  return successResponse(order, '订单创建成功')
 }
 
 /**
@@ -1148,41 +1153,42 @@ async function handleNotificationRoutes(action, rest, method, request, db, userI
  * - GET /api/orders/:outTradeNo  根据订单号获取订单详情
  */
 async function handleOrderRoutes(action, rest, method, request, db, userId, userRole) {
-  // 创建订单（需要已登录用户）
-  if (action === 'create' && method === 'POST') {
-    const baseResponse = await handleOrderCreate(request, db)
-    // 将 userId 强行写入订单（通过二次更新），防止前端伪造 userId
-    try {
-      const cloned = baseResponse.clone()
-      const data = await cloned.json().catch(() => null)
-      if (data?.success && data.data?.id && userId) {
-        await db.orders.updateOrder(data.data.id, { userId })
+  try {
+    // 创建订单（需要已登录用户）
+    if (action === 'create' && method === 'POST') {
+      const baseResponse = await handleOrderCreate(request, db)
+      // 将 userId 强行写入订单（通过二次更新），防止前端伪造 userId
+      try {
+        const cloned = baseResponse.clone()
+        const data = await cloned.json().catch(() => null)
+        if (data?.success && data.data?.id && userId) {
+          await db.orders.updateOrder(data.data.id, { userId })
+        }
+      } catch (e) {
+        console.warn('更新订单 userId 失败：', e)
       }
-    } catch (e) {
-      console.warn('更新订单 userId 失败：', e)
-    }
-    return baseResponse
-  }
-
-  // 根据订单号获取订单详情
-  if (action && rest.length === 0 && method === 'GET') {
-    const outTradeNo = action
-    const order = await db.orders.getOrderByOutTradeNo(outTradeNo)
-    
-    if (!order) {
-      return notFoundResponse('订单不存在')
+      return baseResponse
     }
 
-    // 权限检查：非管理员只能查看自己的订单
-    if (userRole !== 'admin' && order.userId !== userId) {
-      return unauthorizedResponse('无权访问该订单')
+    // 根据订单号获取订单详情
+    if (action && rest.length === 0 && method === 'GET') {
+      const outTradeNo = action
+      const order = await db.orders.getOrderByOutTradeNo(outTradeNo)
+      
+      if (!order) {
+        return notFoundResponse('订单不存在')
+      }
+
+      // 权限检查：非管理员只能查看自己的订单
+      if (userRole !== 'admin' && order.userId !== userId) {
+        return unauthorizedResponse('无权访问该订单')
+      }
+
+      return successResponse(order)
     }
 
-    return successResponse(order)
-  }
-
-  // 获取订单列表
-  if (!action && method === 'GET') {
+    // 获取订单列表
+    if (!action && method === 'GET') {
     const url = new URL(request.url)
     const targetUserId = url.searchParams.get('userId')
 
@@ -1212,13 +1218,17 @@ async function handleOrderRoutes(action, rest, method, request, db, userId, user
     // 按时间倒序
     filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 
-    return successResponse({
-      orders: filtered,
-      total: filtered.length,
-    })
-  }
+      return successResponse({
+        orders: filtered,
+        total: filtered.length,
+      })
+    }
 
-  return notFoundResponse('订单路由不存在')
+    return notFoundResponse('订单路由不存在')
+  } catch (error) {
+    console.error('订单路由处理失败:', error)
+    return errorResponse(`订单处理失败：${error.message || '未知错误'}`, 500)
+  }
 }
 
 /**

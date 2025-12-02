@@ -371,33 +371,54 @@ export class OrderDB {
   }
 
   async createOrder(order) {
-    const orderId = generateId()
-    const now = new Date().toISOString()
-    const amountNum = Number(order.amount || 0)
-    const amountCents = Number.isFinite(amountNum) ? Math.round(amountNum * 100) : 0
-    const newOrder = {
-      ...order,
-      id: orderId,
-      status: order.status || 'pending', // pending | paid | failed
-      createdAt: now,
-      amount: amountNum,
-      amountCents,
+    try {
+      const orderId = generateId()
+      const now = new Date().toISOString()
+      const amountNum = Number(order.amount || 0)
+      const amountCents = Number.isFinite(amountNum) ? Math.round(amountNum * 100) : 0
+      const newOrder = {
+        ...order,
+        id: orderId,
+        status: order.status || 'pending', // pending | paid | failed
+        createdAt: now,
+        amount: amountNum,
+        amountCents,
+      }
+
+      // 检查 KV 是否可用
+      if (!this.kv || typeof this.kv.put !== 'function') {
+        throw new Error('KV 存储未配置或不可用')
+      }
+
+      await this.kv.put(`${this.orderPrefix}${orderId}`, JSON.stringify(newOrder))
+
+      // 索引：全部订单
+      const index = await this.kv.get(this.orderIndexKey)
+      let orderIds = []
+      if (index) {
+        try {
+          orderIds = JSON.parse(index)
+          if (!Array.isArray(orderIds)) {
+            orderIds = []
+          }
+        } catch (e) {
+          console.warn('解析订单索引失败，使用空数组:', e)
+          orderIds = []
+        }
+      }
+      orderIds.push(orderId)
+      await this.kv.put(this.orderIndexKey, JSON.stringify(orderIds))
+
+      // 索引：按 out_trade_no 快速查找
+      if (newOrder.outTradeNo) {
+        await this.kv.put(`${this.outTradeIndexPrefix}${newOrder.outTradeNo}`, orderId)
+      }
+
+      return newOrder
+    } catch (error) {
+      console.error('创建订单失败:', error)
+      throw new Error(`创建订单失败: ${error.message || '未知错误'}`)
     }
-
-    await this.kv.put(`${this.orderPrefix}${orderId}`, JSON.stringify(newOrder))
-
-    // 索引：全部订单
-    const index = await this.kv.get(this.orderIndexKey)
-    const orderIds = index ? JSON.parse(index) : []
-    orderIds.push(orderId)
-    await this.kv.put(this.orderIndexKey, JSON.stringify(orderIds))
-
-    // 索引：按 out_trade_no 快速查找
-    if (newOrder.outTradeNo) {
-      await this.kv.put(`${this.outTradeIndexPrefix}${newOrder.outTradeNo}`, orderId)
-    }
-
-    return newOrder
   }
 
   async updateOrder(orderId, updates) {

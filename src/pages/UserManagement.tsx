@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Users, Trash2, ShieldCheck, UserMinus, Plus } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'

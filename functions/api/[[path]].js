@@ -123,7 +123,8 @@ export async function onRequest(context) {
   const { request, env, params } = context
   const { path } = params || {}
   const url = new URL(request.url)
-  const pathSegments = (path || '').split('/').filter(Boolean)
+  const rawPath = Array.isArray(path) ? path.join('/') : (path || '')
+  const pathSegments = rawPath.split('/').filter(Boolean)
   const method = request.method
 
   const cors = buildCorsConfig(request, env)

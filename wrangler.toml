@@ -10,8 +10,8 @@ pages_build_output_dir = "dist"
 # KV Namespace 绑定（请在部署前替换为实际 ID）
 [[kv_namespaces]]
 binding = "DB"
-id = "REPLACE_WITH_PRODUCTION_KV_ID"
-preview_id = "REPLACE_WITH_PREVIEW_KV_ID"
+id = "7f9b381ea7514099bb85b5ff966c64e"
+preview_id = "0383c4eaf5f3428ea8b4ff2e0af946b6"
 
 # 非敏感环境变量（敏感信息请使用 wrangler secret）
 [vars]

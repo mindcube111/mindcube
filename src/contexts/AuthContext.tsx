@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react'
 import { User } from '@/types'
 import { logger } from '@/utils/logger'
+import { login as apiLogin, register as apiRegister } from '@/services/api/auth'
 
 interface RegisterPayload {
   username: string
@@ -357,84 +358,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ): Promise<{ success: boolean; message?: string }> => {
     setIsLoading(true)
     try {
-      // 模拟登录API调用
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      const result = await apiLogin({ username, password })
+      setIsLoading(false)
 
-      const account = findAccount(username, password)
-      if (!account) {
-        setIsLoading(false)
-        return { success: false, message: '用户名或密码错误' }
-      }
-
-      if (account.status !== 'active') {
-        setIsLoading(false)
+      if (!result.success || !result.data) {
         return {
           success: false,
-          message: '该账号尚未通过管理员审核或已被禁用，请联系管理员',
+          message: result.message || '用户名或密码错误',
         }
       }
 
-      // 更新最近登录时间
-      const now = new Date().toISOString()
-      let finalAccount = account // 用于存储最终的账号数据
-      
-      if (account.isDefault) {
-        // 更新默认账号的登录时间（持久化到独立的 localStorage 键）
-        try {
-          const stored = localStorage.getItem('default_accounts_login_times')
-          const loginTimes = stored ? JSON.parse(stored) : {}
-          loginTimes[account.id] = now
-          localStorage.setItem('default_accounts_login_times', JSON.stringify(loginTimes))
-          
-          // 如果是管理员账号且没有初始化额度数据，初始化默认额度
-          if (account.role === 'admin') {
-            const quotaStored = localStorage.getItem('default_accounts_quota')
-            const quotaData = quotaStored ? JSON.parse(quotaStored) : {}
-            // 如果没有管理员额度数据，初始化默认值 9999
-            if (quotaData[account.id] === undefined) {
-              quotaData[account.id] = 9999
-              localStorage.setItem('default_accounts_quota', JSON.stringify(quotaData))
-              // 更新 finalAccount 使用新的额度值
-              finalAccount = { ...account, remainingQuota: 9999 }
-            }
-            // 初始化累计总额度
-            const totalQuotaStored = localStorage.getItem('default_accounts_total_quota')
-            const totalQuotaData = totalQuotaStored ? JSON.parse(totalQuotaStored) : {}
-            if (totalQuotaData[account.id] === undefined) {
-              totalQuotaData[account.id] = 9999
-              localStorage.setItem('default_accounts_total_quota', JSON.stringify(totalQuotaData))
-            }
-          }
-          
-          // 触发 accounts 重新计算
-          setDefaultLoginTimesVersion(prev => prev + 1)
-        } catch (error) {
-          logger.error('Failed to save default account login time', error, { accountId: account.id })
-        }
-      } else {
-        // 更新注册用户的登录时间（持久化到 customUsers）
-        setCustomUsers(prev => {
-          const updated = prev.map((acc) =>
-            acc.id === account.id ? { ...acc, lastLoginAt: now } : acc
-          )
-          persistCustomUsers(updated)
-          return updated
-        })
-      }
-
-      // 使用 finalAccount 对象（如果初始化了管理员数据，已包含正确的额度）
-      const userData: User = {
-        id: finalAccount.id,
-        username: finalAccount.username,
-        email: finalAccount.email,
-        name: finalAccount.name || finalAccount.username,
-        role: finalAccount.role,
-        createdAt: finalAccount.createdAt,
-        remainingQuota: finalAccount.remainingQuota,
-      }
-      setUser(userData)
-      localStorage.setItem('user', JSON.stringify(userData))
-      setIsLoading(false)
+      const { user: loggedInUser } = result.data
+      setUser(loggedInUser)
       return { success: true }
     } catch (error) {
       logger.error('Login error', error, { username })
@@ -444,31 +379,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const register = async ({ username, email, password }: RegisterPayload): Promise<RegisterResult> => {
-    await new Promise(resolve => setTimeout(resolve, 800))
-
-    const exists = [...defaultAccounts, ...customUsers].some(
-      (account) => account.username.toLowerCase() === username.toLowerCase(),
-    )
-    if (exists) {
-      return { success: false, message: '用户名已存在，请更换后重试' }
+    try {
+      const result = await apiRegister({ username, email, password })
+      return {
+        success: result.success,
+        message: result.message || (result.success ? '注册成功，请等待管理员审核后再登录' : '注册失败'),
+      }
+    } catch (error) {
+      logger.error('Register error', error, { username, email })
+      return { success: false, message: '注册失败，请稍后重试' }
     }
-
-    const newUser: StoredAccount = {
-      id: Date.now().toString(),
-      username,
-      email,
-      password,
-      role: 'user',
-      name: username,
-      createdAt: new Date().toISOString(),
-      status: 'disabled',
-      remainingQuota: 0,
-    }
-
-    const updatedUsers = [...customUsers, newUser]
-    setCustomUsers(updatedUsers)
-    persistCustomUsers(updatedUsers)
-    return { success: true, message: '注册成功，请等待管理员审核后再登录' }
   }
 
   const logout = () => {

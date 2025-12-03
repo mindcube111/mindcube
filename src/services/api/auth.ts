@@ -47,10 +47,16 @@ export async function login(
   if (response.success && response.data) {
     // 保存 token
     apiClient.setAuthToken(response.data.token)
-    // 保存用户信息
+
+    // 保存用户信息到 localStorage，附带 token，便于后续恢复会话
     if (typeof window !== 'undefined') {
-      localStorage.setItem('user', JSON.stringify(response.data.user))
+      const withToken = {
+        ...response.data.user,
+        token: response.data.token,
+      }
+      localStorage.setItem('user', JSON.stringify(withToken))
     }
+
     return {
       success: true,
       data: response.data,

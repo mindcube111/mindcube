@@ -259,5 +259,5 @@ async function verifyCallbackSign(searchParams, key) {
   return { valid: true }
 }
 
-export { getZPayConfig, createZPaySign, verifyCallbackSign, getPackageConfig }
+export { createZPaySign, verifyCallbackSign, getPackageConfig }
 

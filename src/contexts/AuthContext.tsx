@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useMemo, ReactNode } fr
 import { User } from '@/types'
 import { logger } from '@/utils/logger'
 import { login as apiLogin, register as apiRegister } from '@/services/api/auth'
+import apiClient from '@/services/api/client'
 
 interface RegisterPayload {
   username: string
@@ -92,6 +93,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser)
+        // 如果本地用户中包含 token，恢复到 API 客户端，避免刷新后丢失认证状态
+        if (parsed.token) {
+          apiClient.setAuthToken(parsed.token)
+        }
         setUser({
           ...parsed,
           remainingQuota: parsed?.remainingQuota ?? 0,

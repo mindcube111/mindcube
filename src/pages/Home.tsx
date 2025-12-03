@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { motion } from 'framer-motion'
 import { 
@@ -29,31 +29,16 @@ import {
   Activity,
   Layers
 } from 'lucide-react'
-import { getPublishedQuestionnaires, getPublishedQuestionnairesAsync, type QuestionnaireConfig } from '@/utils/questionnaireConfig'
-import { escapeHtml } from '@/utils/xss'
-import { analytics, FunnelStep } from '@/utils/analytics'
+import { getPublishedQuestionnaires, type QuestionnaireConfig } from '@/utils/questionnaireConfig'
 
 export default function Home() {
   const navigate = useNavigate()
   const { isAuthenticated } = useAuth()
   const [availableQuestionnaires, setAvailableQuestionnaires] = useState<QuestionnaireConfig[]>([])
 
-  // 追踪首页访问
-  useEffect(() => {
-    analytics.trackFunnelStep(FunnelStep.HOME_VISIT)
-  }, [])
-
-  const loadQuestionnaires = async () => {
-    try {
-      // 优先从 API 加载
-      const published = await getPublishedQuestionnairesAsync()
-      setAvailableQuestionnaires(published)
-    } catch (error) {
-      console.warn('从 API 加载问卷失败，使用本地数据', error)
-      // 降级到本地
-      const published = getPublishedQuestionnaires()
-      setAvailableQuestionnaires(published)
-    }
+  const loadQuestionnaires = () => {
+    const published = getPublishedQuestionnaires()
+    setAvailableQuestionnaires(published)
   }
 
   useEffect(() => {
@@ -195,9 +180,6 @@ export default function Home() {
                 <img
                   src="/logo-cube.jpg"
                   alt="MIND CUBE Logo"
-                  width="40"
-                  height="40"
-                  loading="lazy"
                   className="w-8 h-8 sm:w-10 sm:h-10 rounded-2xl"
                 />
               </div>
@@ -457,7 +439,7 @@ export default function Home() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white break-words">
-                          {escapeHtml(questionnaire.label)}
+                          {questionnaire.label}
                         </h3>
                         {questionnaire.isCustom && (
                           <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs rounded flex-shrink-0">
@@ -466,7 +448,7 @@ export default function Home() {
                         )}
                       </div>
                       <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                        {escapeHtml(questionnaire.description)}
+                        {questionnaire.description}
                       </p>
                     </div>
                     <div className="text-right flex-shrink-0">
@@ -484,7 +466,7 @@ export default function Home() {
                         key={idx}
                         className="px-2 py-1 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 text-xs rounded-full"
                       >
-                        {escapeHtml(feature)}
+                        {feature}
                       </span>
                     ))}
                   </div>
@@ -502,20 +484,15 @@ export default function Home() {
                   </div>
 
                   {/* 开始测试按钮 */}
-                  <div className="space-y-2">
-                    <motion.button
-                      onClick={() => handleStartTest(questionnaire.value)}
-                      className="w-full px-4 py-2 sm:py-3 bg-primary-500 text-white rounded-lg flex items-center justify-center gap-2 font-bold shadow-md relative z-10 text-sm sm:text-base"
-                      whileHover={{ scale: 1.02, boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
-                      <span>立即支付并开始测试</span>
-                    </motion.button>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                      支付成功后会自动跳转到测评页面
-                    </p>
-                  </div>
+                  <motion.button
+                    onClick={() => handleStartTest(questionnaire.value)}
+                    className="w-full px-4 py-2 sm:py-3 bg-primary-500 text-white rounded-lg flex items-center justify-center gap-2 font-bold shadow-md relative z-10 text-sm sm:text-base"
+                    whileHover={{ scale: 1.02, boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span>开始测试</span>
+                  </motion.button>
                 </motion.div>
               ))}
             </div>
@@ -799,29 +776,6 @@ export default function Home() {
                   立即注册
                 </motion.button>
               )}
-              {/* 风险提示 */}
-              <motion.p
-                className="mt-6 sm:mt-8 text-sm text-gray-500 dark:text-gray-400 text-center max-w-2xl mx-auto px-4"
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: 0.5 }}
-              >
-                本测评仅用于自我探索，不构成任何医疗或心理诊断建议，详情见
-                <Link
-                  to="/user-agreement"
-                  className="text-primary-600 dark:text-primary-400 hover:underline mx-1"
-                >
-                  《用户协议》
-                </Link>
-                <Link
-                  to="/privacy-policy"
-                  className="text-primary-600 dark:text-primary-400 hover:underline mx-1"
-                >
-                  《隐私政策》
-                </Link>
-                。
-              </motion.p>
             </div>
           </motion.div>
         </section>
@@ -957,43 +911,17 @@ export default function Home() {
                   </button>
                 </li>
                 <li>
-                  <button
-                    onClick={() => navigate('/privacy-policy')}
-                    className="hover:text-white transition-colors"
-                  >
+                  <button className="hover:text-white transition-colors">
                     隐私政策
                   </button>
                 </li>
                 <li>
-                  <button
-                    onClick={() => navigate('/user-agreement')}
-                    className="hover:text-white transition-colors"
-                  >
+                  <button className="hover:text-white transition-colors">
                     用户协议
                   </button>
                 </li>
               </ul>
             </div>
-          </div>
-
-          {/* 风险提示 */}
-          <div className="border-t border-gray-800 pt-6 mb-4">
-            <p className="text-center text-xs text-gray-500 max-w-3xl mx-auto px-4">
-              本测评仅用于自我探索，不构成任何医疗或心理诊断建议，详情见
-              <button
-                onClick={() => navigate('/user-agreement')}
-                className="text-primary-400 hover:text-primary-300 underline mx-1"
-              >
-                《用户协议》
-              </button>
-              <button
-                onClick={() => navigate('/privacy-policy')}
-                className="text-primary-400 hover:text-primary-300 underline mx-1"
-              >
-                《隐私政策》
-              </button>
-              。
-            </p>
           </div>
 
           <div className="border-t border-gray-800 pt-6 text-center text-sm">

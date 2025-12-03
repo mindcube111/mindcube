@@ -47,32 +47,35 @@ interface StoredAccount {
 import { STORAGE_KEYS } from '@/constants'
 const CUSTOM_USERS_KEY = STORAGE_KEYS.CUSTOM_USERS
 
-const defaultAccounts: StoredAccount[] = [
-  {
-    id: '1',
-    username: 'admin',
-    email: 'admin@example.com',
-    password: 'admin123',
-    role: 'admin',
-    name: '管理员',
-    createdAt: '2024-01-01T00:00:00.000Z',
-    status: 'active',
-    isDefault: true,
-    remainingQuota: 9999,
-  },
-  {
-    id: '2',
-    username: 'user',
-    email: 'user@example.com',
-    password: 'user123',
-    role: 'user',
-    name: '测试用户',
-    createdAt: '2024-01-01T00:00:00.000Z',
-    status: 'active',
-    isDefault: true,
-    remainingQuota: 300,
-  },
-]
+const enableDemoAccounts = import.meta.env.VITE_ENABLE_DEMO_ACCOUNTS === 'true'
+const defaultAccounts: StoredAccount[] = enableDemoAccounts
+  ? [
+      {
+        id: '1',
+        username: 'admin',
+        email: 'admin@example.com',
+        password: 'admin123',
+        role: 'admin',
+        name: '管理员',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        status: 'active',
+        isDefault: true,
+        remainingQuota: 9999,
+      },
+      {
+        id: '2',
+        username: 'user',
+        email: 'user@example.com',
+        password: 'user123',
+        role: 'user',
+        name: '测试用户',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        status: 'active',
+        isDefault: true,
+        remainingQuota: 300,
+      },
+    ]
+  : []
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 

@@ -35,10 +35,10 @@ src/
 └── data/               # 数据文件
 ```
 
-## 🔑 默认账号
+## 🔐 账号初始化
 
-- **管理员**: `admin` / `admin123`
-- **普通用户**: `user` / `user123`
+- 生产环境不再内置任何默认账号，请在部署后通过管理员审核流程或直接向 Cloudflare KV 写入首个管理员账号。
+- 本地开发如果需要内置演示账号，可在 `.env` 中显式开启 `VITE_ENABLE_DEMO_ACCOUNTS=true`，请勿在生产环境启用。
 
 ## ✨ 主要功能
 
@@ -82,7 +82,17 @@ src/
 
 ```env
 VITE_API_BASE_URL=http://localhost:3000/api
+# 本地演示账号开关（仅限开发环境）
+VITE_ENABLE_DEMO_ACCOUNTS=false
 ```
+
+### Cloudflare Pages 环境变量（wrangler.toml 或 Dashboard）
+
+- `JWT_SECRET`：JWT 签名密钥，必须为随机高强度字符串
+- `ALLOWED_ORIGINS`：允许访问 API 的站点，多个以逗号分隔，可使用 `self`
+- `ZPAY_PID` / `ZPAY_KEY` / `ZPAY_GATEWAY`：支付商户配置
+- `ZPAY_NOTIFY_URL` / `ZPAY_RETURN_URL`：必须为 HTTPS 地址
+- `ALLOW_IN_MEMORY_DB`：仅在本地调试时可设为 `true`，生产环境务必关闭
 
 ## 📝 注意事项
 

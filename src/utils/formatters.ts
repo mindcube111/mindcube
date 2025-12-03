@@ -4,8 +4,9 @@ export const formatDate = (date: string | Date, pattern = 'yyyy-MM-dd HH:mm') =>
   return format(new Date(date), pattern)
 }
 
-export const formatNumber = (num: number): string => {
-  return num.toLocaleString('zh-CN')
+export const formatNumber = (num?: number | null): string => {
+  const value = typeof num === 'number' && Number.isFinite(num) ? num : 0
+  return value.toLocaleString('zh-CN')
 }
 
 export const formatFileSize = (bytes: number): string => {

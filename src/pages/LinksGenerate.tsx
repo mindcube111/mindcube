@@ -6,52 +6,26 @@ import { addLinks } from '@/utils/links'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { useAuth } from '@/contexts/AuthContext'
 import { addAuditLog } from '@/utils/audit'
+import {
+  getPublishedQuestionnaires,
+  getPublishedQuestionnairesAsync,
+  type QuestionnaireConfig,
+} from '@/utils/questionnaireConfig'
 
-interface QuestionnaireDefinition {
-  value: QuestionnaireType | string
-    label: string
-    description: string
-    features: string[]
-    duration: string
-    questions: string
-  isCustom?: boolean
+const hasQuestionnaireArray = (data: unknown): data is QuestionnaireConfig[] => Array.isArray(data)
+
+const normalizeQuestionnaires = (data: unknown): QuestionnaireConfig[] => {
+  if (!Array.isArray(data)) return []
+  return data.filter((item): item is QuestionnaireConfig => {
+    return typeof item === 'object' && item !== null && 'value' in item && 'label' in item
+  })
 }
-
-const CUSTOM_TYPES_KEY = 'question_import_custom_types'
-const PUBLISH_STATE_KEY = 'question_publish_state'
-
-const SYSTEM_QUESTIONNAIRES: QuestionnaireDefinition[] = [
-    { 
-      value: 'SCL-90', 
-      label: 'SCL-90 心理健康测评',
-      description: '综合心理健康症状自评量表，评估9个心理症状维度',
-      features: ['90个题目', '9个评估维度', '专业报告解读', '适合个人自查'],
-      duration: '约15-20分钟',
-    questions: '90题',
-    },
-    { 
-      value: 'MBTI', 
-      label: 'MBTI 人格评估',
-      description: '16型人格测试，帮助了解个人性格特点和职业倾向',
-      features: ['93个题目', '16种人格类型', '职业匹配分析', '适合团队建设'],
-      duration: '约20-25分钟',
-    questions: '93题',
-    },
-    { 
-      value: 'Holland', 
-      label: '霍兰德职业测试',
-      description: '职业兴趣测评，帮助发现个人职业兴趣和适合的职业方向',
-      features: ['60个题目', '6种职业兴趣类型', '职业推荐', '适合职业规划'],
-      duration: '约10-15分钟',
-    questions: '60题',
-    },
-  ]
 
 export default function LinksGenerate() {
   const { user, updateUserUsedQuota } = useAuth()
   const [quantity, setQuantity] = useState(1)
   const [questionnaireType, setQuestionnaireType] = useState<string>('')
-  const [availableTypes, setAvailableTypes] = useState<QuestionnaireDefinition[]>([])
+  const [availableTypes, setAvailableTypes] = useState<QuestionnaireConfig[]>([])
   const [generatedLinks, setGeneratedLinks] = useState<Link[]>([])
   const [copied, setCopied] = useState(false)
   const [remainingQuota, setRemainingQuota] = useState(() =>
@@ -60,39 +34,43 @@ export default function LinksGenerate() {
   const { showAlert, DialogComponent } = useConfirmDialog()
   const isAdmin = user?.role === 'admin'
 
-  const refreshTypes = useCallback(() => {
-    const publishState = loadPublishState()
-    const customTypes = loadCustomTypes()
-
-    const system = SYSTEM_QUESTIONNAIRES.filter((type) => publishState[type.value as string] ?? true)
-
-    const custom = customTypes
-      .map<QuestionnaireDefinition>((name) => ({
-        value: name,
-        label: name,
-        description: `自定义问卷：${name}`,
-        features: ['自定义题库', '支持协作', '立即上线'],
-        duration: '自定义',
-        questions: '—',
-        isCustom: true,
-      }))
-      .filter((type) => publishState[type.value] ?? true)
-
-    const combined = [...system, ...custom]
-    setAvailableTypes(combined)
+  const updateAvailableTypes = useCallback((types: QuestionnaireConfig[]) => {
+    setAvailableTypes(types)
     setQuestionnaireType((prev) =>
-      prev && combined.some((type) => equalsIgnoreCase(type.value, prev))
-        ? prev
-        : combined[0]?.value ?? '',
+      prev && types.some((type) => equalsIgnoreCase(type.value, prev)) ? prev : types[0]?.value ?? '',
     )
   }, [])
 
+  const refreshTypes = useCallback(async () => {
+    try {
+      const published = await getPublishedQuestionnairesAsync()
+      if (hasQuestionnaireArray(published)) {
+        updateAvailableTypes(normalizeQuestionnaires(published))
+        return
+      }
+      console.warn('问卷类型 API 返回异常，使用本地数据')
+    } catch (error) {
+      console.warn('获取问卷类型失败，使用本地数据', error)
+    }
+
+    const fallback = getPublishedQuestionnaires()
+    if (hasQuestionnaireArray(fallback)) {
+      updateAvailableTypes(normalizeQuestionnaires(fallback))
+    } else {
+      updateAvailableTypes([])
+    }
+  }, [updateAvailableTypes])
+
   useEffect(() => {
-    refreshTypes()
-    const handler = () => refreshTypes()
+    void refreshTypes()
+    const handler = () => {
+      void refreshTypes()
+    }
+    window.addEventListener('questionnaire-publish-state-updated', handler)
     window.addEventListener('question-types-updated', handler)
     window.addEventListener('storage', handler)
     return () => {
+      window.removeEventListener('questionnaire-publish-state-updated', handler)
       window.removeEventListener('question-types-updated', handler)
       window.removeEventListener('storage', handler)
     }
@@ -365,35 +343,6 @@ function InfoCard({
         </div>
     </div>
   )
-}
-
-function loadCustomTypes(): string[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const stored = localStorage.getItem(CUSTOM_TYPES_KEY)
-    if (!stored) return []
-    const parsed = JSON.parse(stored)
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : []
-  } catch {
-    return []
-  }
-}
-
-function loadPublishState(): Record<string, boolean> {
-  const defaults: Record<string, boolean> = {
-    'SCL-90': true,
-    MBTI: true,
-    Holland: true,
-  }
-  if (typeof window === 'undefined') return defaults
-  try {
-    const stored = localStorage.getItem(PUBLISH_STATE_KEY)
-    if (!stored) return defaults
-    const parsed = JSON.parse(stored)
-    return { ...defaults, ...(parsed || {}) }
-  } catch {
-    return defaults
-  }
 }
 
 function equalsIgnoreCase(a?: string | number, b?: string | number) {

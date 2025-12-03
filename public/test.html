@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>心理测评 - 测试页面</title>
+    <style>
+      :root {
+        font-family: 'PingFang SC', 'Segoe UI', system-ui, sans-serif;
+        color: #1f2933;
+        background: #f4f6fb;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 12px;
+        background: radial-gradient(circle at top, #f8fbff 0%, #e8efff 45%, #f4f6fb 100%);
+      }
+      .card {
+        width: min(840px, 100%);
+        background: #ffffff;
+        border-radius: 28px;
+        padding: 40px 48px;
+        box-shadow: 0 24px 55px rgba(15, 23, 42, 0.12);
+      }
+      h1 {
+        margin: 0;
+        font-size: 28px;
+      }
+      p.description {
+        margin: 12px 0 24px;
+        color: #52606d;
+        line-height: 1.6;
+      }
+      .status {
+        margin-bottom: 24px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        font-size: 15px;
+      }
+      .status-info {
+        background: #eef2ff;
+        color: #353a78;
+      }
+      .status-error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      .progress-bar {
+        width: 100%;
+        height: 8px;
+        border-radius: 999px;
+        background: #f1f5f9;
+        margin: 16px 0 28px;
+        overflow: hidden;
+      }
+      .progress-bar span {
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #6366f1, #8b5cf6);
+        width: 0;
+        transition: width 0.3s ease;
+      }
+      .question-title {
+        font-size: 22px;
+        margin-bottom: 20px;
+      }
+      .options {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .option {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 18px;
+        border-radius: 16px;
+        border: 2px solid #e2e8f0;
+        background: #fdfdff;
+        cursor: pointer;
+        transition: border-color 0.2s ease, background 0.2s ease;
+      }
+      .option input {
+        accent-color: #6366f1;
+        width: 18px;
+        height: 18px;
+      }
+      .option-active {
+        border-color: #818cf8;
+        background: #eef2ff;
+      }
+      .actions {
+        margin-top: 32px;
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+      }
+      button {
+        border: none;
+        border-radius: 12px;
+        padding: 12px 26px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+      button.primary {
+        background: linear-gradient(90deg, #6366f1, #8b5cf6);
+        color: white;
+        box-shadow: 0 15px 30px rgba(99, 102, 241, 0.3);
+      }
+      button.secondary {
+        background: #e4e7ec;
+        color: #1f2933;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+      .result {
+        text-align: center;
+        padding: 20px;
+      }
+      .result h2 {
+        margin: 0 0 12px;
+      }
+      @media (max-width: 640px) {
+        .card {
+          padding: 28px 20px;
+        }
+        .actions {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="status status-info" id="status"></div>
+      <h1 id="test-title">心理测评</h1>
+      <p class="description" id="test-desc"></p>
+
+      <div class="progress-bar">
+        <span id="progress"></span>
+      </div>
+
+      <section id="question-section" hidden>
+        <div class="question-title" id="question-title"></div>
+        <div class="options" id="options"></div>
+
+        <div class="actions">
+          <button class="secondary" id="prev-btn">上一题</button>
+          <button class="primary" id="next-btn">下一题</button>
+        </div>
+      </section>
+
+      <section class="result" id="result-section" hidden>
+        <h2 id="result-title">提交成功</h2>
+        <p id="result-desc"></p>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        linkId: null,
+        currentIndex: 0,
+        testData: null,
+        answers: {},
+        submitting: false,
+      }
+
+      const statusEl = document.getElementById('status')
+      const titleEl = document.getElementById('test-title')
+      const descEl = document.getElementById('test-desc')
+      const questionSection = document.getElementById('question-section')
+      const questionTitleEl = document.getElementById('question-title')
+      const optionsEl = document.getElementById('options')
+      const progressEl = document.getElementById('progress')
+      const prevBtn = document.getElementById('prev-btn')
+      const nextBtn = document.getElementById('next-btn')
+      const resultSection = document.getElementById('result-section')
+      const resultTitle = document.getElementById('result-title')
+      const resultDesc = document.getElementById('result-desc')
+
+      function setStatus(message, type = 'info') {
+        statusEl.textContent = message
+        statusEl.className = `status status-${type}`
+      }
+
+      function showError(message) {
+        setStatus(message, 'error')
+        questionSection.hidden = true
+      }
+
+      function showLoading(message = '正在加载题目，请稍候...') {
+        setStatus(message, 'info')
+        questionSection.hidden = true
+      }
+
+      function renderQuestion() {
+        const { testData, currentIndex } = state
+        if (!testData) return
+
+        const total = testData.questions.length
+        const question = testData.questions[currentIndex]
+
+        questionSection.hidden = false
+        resultSection.hidden = true
+
+        titleEl.textContent = testData.title || '心理测评'
+        descEl.textContent = testData.description || '请根据近期状态如实作答'
+        setStatus(`进行中：题目 ${currentIndex + 1} / ${total}`)
+
+        questionTitleEl.textContent = question.text || question.title || `题目 ${currentIndex + 1}`
+        renderOptions(question)
+
+        progressEl.style.width = `${((currentIndex + 1) / total) * 100}%`
+        prevBtn.disabled = currentIndex === 0
+        nextBtn.textContent = currentIndex === total - 1 ? '提交答案' : '下一题'
+      }
+
+      function renderOptions(question) {
+        optionsEl.innerHTML = ''
+        const selected = state.answers[question.id]
+
+        const options =
+          Array.isArray(question.options) && question.options.length > 0
+            ? question.options
+            : [
+                { value: 1, label: '完全不符合' },
+                { value: 2, label: '不太符合' },
+                { value: 3, label: '一般' },
+                { value: 4, label: '比较符合' },
+                { value: 5, label: '非常符合' },
+              ]
+
+        options.forEach((option) => {
+          const wrapper = document.createElement('label')
+          wrapper.className = 'option' + (option.value === selected ? ' option-active' : '')
+
+          const input = document.createElement('input')
+          input.type = 'radio'
+          input.name = 'answer'
+          input.value = option.value
+          input.checked = option.value === selected
+          input.addEventListener('change', () => {
+            state.answers[question.id] = option.value
+            renderOptions(question)
+          })
+
+          const span = document.createElement('span')
+          span.textContent = option.label ?? option.value
+
+          wrapper.appendChild(input)
+          wrapper.appendChild(span)
+          optionsEl.appendChild(wrapper)
+        })
+      }
+
+      function goNext() {
+        const { currentIndex, testData } = state
+        const question = testData.questions[currentIndex]
+        if (question.required !== false && state.answers[question.id] === undefined) {
+          setStatus('请先选择一个选项', 'error')
+          return
+        }
+
+        if (currentIndex === testData.questions.length - 1) {
+          submitAnswers()
+        } else {
+          state.currentIndex += 1
+          renderQuestion()
+        }
+      }
+
+      function goPrev() {
+        if (state.currentIndex === 0) return
+        state.currentIndex -= 1
+        renderQuestion()
+      }
+
+      async function submitAnswers() {
+        if (state.submitting) return
+        state.submitting = true
+        setStatus('正在提交，请稍候...')
+        nextBtn.disabled = true
+        prevBtn.disabled = true
+
+        const payload = {
+          answers: state.testData.questions.map((q) => ({
+            questionId: q.id,
+            value: state.answers[q.id],
+          })),
+          meta: {
+            userAgent: navigator.userAgent,
+            submittedAt: new Date().toISOString(),
+          },
+        }
+
+        try {
+          const res = await fetch(`/api/public-test/${encodeURIComponent(state.linkId)}/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+          const data = await res.json()
+          if (!data.success) {
+            throw new Error(data.message || '提交失败')
+          }
+
+          questionSection.hidden = true
+          resultSection.hidden = true
+          setStatus('提交成功，正在生成结果...')
+          resultSection.hidden = false
+          resultTitle.textContent = '感谢作答'
+          resultDesc.textContent = `报告编号：${data.data.reportId}，请返回管理端查看完整结果。`
+        } catch (error) {
+          console.error(error)
+          showError(error.message || '提交失败，请重试')
+          nextBtn.disabled = false
+          prevBtn.disabled = state.currentIndex === 0
+        } finally {
+          state.submitting = false
+        }
+      }
+
+      async function init() {
+        const params = new URLSearchParams(location.search)
+        state.linkId = params.get('linkId')
+        if (!state.linkId) {
+          showError('链接缺少 linkId 参数，请从管理端重新打开。')
+          return
+        }
+
+        showLoading()
+        try {
+          const res = await fetch(`/api/public-test/${encodeURIComponent(state.linkId)}`)
+          const data = await res.json()
+          if (!data.success) {
+            throw new Error(data.message || '无法加载测试，请确认链接有效。')
+          }
+          state.testData = data.data
+
+          if (!state.testData.questions || state.testData.questions.length === 0) {
+            throw new Error('该测评暂未配置题目，请联系管理员。')
+          }
+
+          state.currentIndex = 0
+          state.answers = {}
+          renderQuestion()
+        } catch (error) {
+          console.error(error)
+          showError(error.message || '加载失败，请稍后再试。')
+        }
+      }
+
+      prevBtn.addEventListener('click', goPrev)
+      nextBtn.addEventListener('click', goNext)
+      init()
+    </script>
+  </body>
+</html>
+
+

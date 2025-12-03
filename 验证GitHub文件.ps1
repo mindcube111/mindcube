@@ -29,3 +29,9 @@ Write-Host "1. 等待几分钟让 GitHub 完全同步" -ForegroundColor White
 Write-Host "2. 在 Cloudflare Dashboard 中触发新的部署" -ForegroundColor White
 Write-Host "3. 检查 Cloudflare 的构建日志查看详细错误" -ForegroundColor White
 
+
+
+
+
+
+

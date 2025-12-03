@@ -10,6 +10,7 @@ import { getDashboardStats, type DashboardStatsResponse } from '@/services/api/d
 import { useApiCache } from '@/hooks/useApiCache'
 import { handleError } from '@/utils/errorHandler'
 import { logger } from '@/utils/logger'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   LineChart,
   Line,
@@ -59,6 +60,7 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false)
   const chartData = useMemo(() => chartPresets[timeframe], [timeframe])
   const { showAlert, DialogComponent } = useConfirmDialog()
+  const { user } = useAuth()
   const axisColor = '#2D3748'
   const gridColor = '#E2E8F0'
   const lineStart = '#4A90E2'
@@ -71,6 +73,16 @@ export default function Dashboard() {
     cacheTime: 2 * 60 * 1000, // 2分钟缓存
     revalidateOnFocus: true,
   })
+
+  const questionnaireSummary = useMemo(() => {
+    if (!statsFromApi?.questionnaireSummary) return []
+    return statsFromApi.questionnaireSummary.map((q) => ({
+      type: q.type,
+      participants: q.totalLinks,
+      completion: q.totalLinks > 0 ? q.completionRate / 100 : 0,
+      avgTime: 0,
+    }))
+  }, [statsFromApi])
 
   const stats = statsFromApi || {
     totalLinks: 0,
@@ -91,16 +103,6 @@ export default function Dashboard() {
       </div>
     )
   }
-
-  const questionnaireSummary = useMemo(() => {
-    if (!statsFromApi?.questionnaireSummary) return []
-    return statsFromApi.questionnaireSummary.map((q) => ({
-      type: q.type,
-      participants: q.totalLinks,
-      completion: q.totalLinks > 0 ? q.completionRate / 100 : 0,
-      avgTime: 0,
-    }))
-  }, [statsFromApi])
 
   const handleRefresh = async () => {
     setRefreshing(true)

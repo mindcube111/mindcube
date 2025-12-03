@@ -348,6 +348,75 @@ export class NotificationDB {
 }
 
 /**
+ * 测评报告相关操作
+ * 主要用于存储通过公开测试链接提交的答卷结果
+ */
+export class ReportDB {
+  constructor(kv) {
+    this.kv = kv
+    this.reportPrefix = 'report:'
+    this.reportIndexKey = 'reports:index'
+    this.linkReportsPrefix = 'link:reports:'
+  }
+
+  async getReportById(reportId) {
+    const data = await this.kv.get(`${this.reportPrefix}${reportId}`)
+    return data ? JSON.parse(data) : null
+  }
+
+  async getReportsByLinkId(linkId) {
+    const key = `${this.linkReportsPrefix}${linkId}`
+    const data = await this.kv.get(key)
+    if (!data) {
+      return []
+    }
+    const reportIds = JSON.parse(data)
+    const reports = await Promise.all(reportIds.map(id => this.getReportById(id)))
+    return reports.filter(Boolean)
+  }
+
+  async getAllReports() {
+    const index = await this.kv.get(this.reportIndexKey)
+    if (!index) {
+      return []
+    }
+    const ids = JSON.parse(index)
+    const reports = await Promise.all(ids.map(id => this.getReportById(id)))
+    return reports.filter(Boolean)
+  }
+
+  async createReport(report) {
+    const reportId = generateId()
+    const now = new Date().toISOString()
+    const newReport = {
+      ...report,
+      id: reportId,
+      createdAt: now,
+      completedAt: report.completedAt || now,
+    }
+
+    await this.kv.put(`${this.reportPrefix}${reportId}`, JSON.stringify(newReport))
+
+    // 全局索引
+    const index = await this.kv.get(this.reportIndexKey)
+    const ids = index ? JSON.parse(index) : []
+    ids.push(reportId)
+    await this.kv.put(this.reportIndexKey, JSON.stringify(ids))
+
+    // 按链接索引
+    if (newReport.linkId) {
+      const key = `${this.linkReportsPrefix}${newReport.linkId}`
+      const data = await this.kv.get(key)
+      const linkReports = data ? JSON.parse(data) : []
+      linkReports.push(reportId)
+      await this.kv.put(key, JSON.stringify(linkReports))
+    }
+
+    return newReport
+  }
+}
+
+/**
  * 订单相关操作（支付订单）
  */
 export class OrderDB {

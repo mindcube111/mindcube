@@ -51,6 +51,7 @@ export default function QuestionnaireManage() {
     duration: '',
     price: 1,
     questions: '',
+    order: undefined as number | undefined,
   })
 
   useEffect(() => {
@@ -135,6 +136,7 @@ export default function QuestionnaireManage() {
       duration: questionnaire.duration,
       price: questionnaire.price,
       questions: questionnaire.questions.replace('题', ''),
+      order: questionnaire.order,
     })
   }
 
@@ -171,6 +173,7 @@ export default function QuestionnaireManage() {
         duration: sanitizedDuration,
         price: editForm.price,
         questions: editForm.questions,
+          order: editForm.order,
       })
       
       if (success) {
@@ -191,6 +194,7 @@ export default function QuestionnaireManage() {
           duration: sanitizedDuration,
           price: editForm.price,
           questions: editForm.questions,
+          order: editForm.order,
         })
         loadQuestionnaires()
         setEditingQuestionnaire(null)
@@ -264,6 +268,11 @@ export default function QuestionnaireManage() {
     if (statusFilter === 'unpublished' && q.isPublished) return false
     
     return true
+  }).sort((a, b) => {
+    const orderA = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER
+    const orderB = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER
+    if (orderA !== orderB) return orderA - orderB
+    return a.label.localeCompare(b.label, 'zh-CN')
   })
 
   const handleBatchPublish = async (publish: boolean) => {
@@ -331,6 +340,50 @@ export default function QuestionnaireManage() {
     total: questionnaires.length,
     published: questionnaires.filter((q) => q.isPublished).length,
     unpublished: questionnaires.filter((q) => !q.isPublished).length,
+  }
+
+  const handleReorder = async (value: string, direction: 'up' | 'down') => {
+    const sorted = [...filteredQuestionnaires]
+    const index = sorted.findIndex((q) => q.value === value)
+    if (index === -1) return
+
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= sorted.length) return
+
+    // 交换位置
+    const temp = sorted[index]
+    sorted[index] = sorted[targetIndex]
+    sorted[targetIndex] = temp
+
+    // 重新生成顺序号
+    const updatedWithOrder = sorted.map((q, idx) => ({
+      ...q,
+      order: idx + 1,
+    }))
+
+    // 应用到整体列表
+    const merged = questionnaires.map((q) => {
+      const updated = updatedWithOrder.find((u) => u.value === q.value)
+      return updated ? updated : q
+    })
+
+    setQuestionnaires(merged)
+
+    try {
+      // 按新的顺序依次更新配置（使用异步 API；失败时降级到本地）
+      for (const q of updatedWithOrder) {
+        try {
+          await updateCustomQuestionnaireAsync(q.value, { order: q.order })
+        } catch {
+          updateCustomQuestionnaire(q.value, { order: q.order })
+        }
+      }
+      clearConfigCache()
+      toast.success('排序已更新，首页将按新顺序展示')
+    } catch (error) {
+      console.error('更新排序失败', error)
+      toast.error('更新排序失败，请稍后重试')
+    }
   }
 
   if (user?.role !== 'admin') {
@@ -456,9 +509,14 @@ export default function QuestionnaireManage() {
             </div>
 
             {/* 问卷信息 */}
-            <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-2 break-words">
-              {questionnaire.label}
-            </h3>
+            <div className="flex items-center justify-between mb-2 gap-2">
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white break-words">
+                {questionnaire.label}
+              </h3>
+              <span className="inline-flex items-center px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-xs text-gray-500">
+                序号：{questionnaire.order ?? '-'}
+              </span>
+            </div>
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-3 sm:mb-4 line-clamp-2">
               {questionnaire.description}
             </p>
@@ -476,7 +534,7 @@ export default function QuestionnaireManage() {
             </div>
 
             {/* 操作按钮 */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => handleEdit(questionnaire)}
                 className="flex-1 px-3 sm:px-4 py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-sm sm:text-base bg-blue-500 text-white hover:bg-blue-600"
@@ -503,6 +561,20 @@ export default function QuestionnaireManage() {
                     上架
                   </>
                 )}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleReorder(questionnaire.value, 'up')}
+                className="px-2 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50"
+              >
+                上移
+              </button>
+              <button
+                type="button"
+                onClick={() => handleReorder(questionnaire.value, 'down')}
+                className="px-2 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50"
+              >
+                下移
               </button>
             </div>
           </div>
@@ -593,6 +665,27 @@ export default function QuestionnaireManage() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  主页排序序号
+                  <span className="ml-1 text-xs text-gray-400">(数字越小越靠前，留空则排在最后)</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={editForm.order ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    setEditForm(prev => ({
+                      ...prev,
+                      order: raw === '' ? undefined : Math.max(1, Number.parseInt(raw, 10) || 1),
+                    }))
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  placeholder="例如：1"
+                />
               </div>
 
               <div>

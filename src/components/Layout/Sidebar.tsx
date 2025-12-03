@@ -27,9 +27,6 @@ const navItems = [
   { path: '/statistics', icon: BarChart3, label: '统计分析' },
   { path: '/packages', icon: ShoppingCart, label: '购买套餐' },
   { path: '/notifications', icon: Bell, label: '通知中心' },
-  { path: '/admin/questions/import', icon: UploadCloud, label: '题目导入', roles: ['admin'] as Array<'admin' | 'user'> },
-  { path: '/links/batch-import', icon: UploadCloud, label: '批量导入', roles: ['admin'] as Array<'admin' | 'user'> },
-  { path: '/admin/questions/manage', icon: Database, label: '链接题目管理', roles: ['admin'] as Array<'admin' | 'user'> },
 ]
 
 interface SidebarProps {
@@ -39,6 +36,7 @@ interface SidebarProps {
 export default function Sidebar({ onClose }: SidebarProps) {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const [isQuestionGroupOpen, setIsQuestionGroupOpen] = useState(true)
   const [isDataGroupOpen, setIsDataGroupOpen] = useState(true)
 
   const handleLogout = () => {
@@ -90,6 +88,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
       )}
       
       <nav className="flex-1 p-4 overflow-y-auto">
+        {/* 顶部通用导航 */}
         {navItems
           .filter((item) => {
             if (!item.roles) return true
@@ -97,26 +96,112 @@ export default function Sidebar({ onClose }: SidebarProps) {
             return item.roles.includes(user.role)
           })
           .map((item) => {
-          const Icon = item.icon
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              onClick={onClose}
-              className={({ isActive }) =>
-                clsx(
-                  'flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all',
-                  isActive
-                    ? 'bg-white text-primary-600 font-semibold shadow-lg'
-                    : 'text-white/80 hover:bg-white/10'
-                )
-              }
+            const Icon = item.icon
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                onClick={onClose}
+                className={({ isActive }) =>
+                  clsx(
+                    'flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all',
+                    isActive
+                      ? 'bg-white text-primary-600 font-semibold shadow-lg'
+                      : 'text-white/80 hover:bg-white/10'
+                  )
+                }
+              >
+                <Icon className="w-5 h-5" />
+                <span>{item.label}</span>
+              </NavLink>
+            )
+          })}
+
+        {/* 题目管理分组，仅管理员可见 */}
+        {user?.role === 'admin' && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => setIsQuestionGroupOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-white/90 hover:bg-white/10 transition-colors mb-1"
             >
-              <Icon className="w-5 h-5" />
-              <span>{item.label}</span>
-            </NavLink>
-          )
-        })}
+              <span className="flex items-center gap-3">
+                <UploadCloud className="w-5 h-5" />
+                <span>题目管理</span>
+              </span>
+              {isQuestionGroupOpen ? (
+                <ChevronUp className="w-4 h-4 text-white/80" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-white/80" />
+              )}
+            </button>
+
+            {isQuestionGroupOpen && (
+              <div className="ml-8 mt-1 space-y-1">
+                <NavLink
+                  to="/admin/questions/import"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                      isActive
+                        ? 'bg-white text-primary-600 font-semibold shadow-md'
+                        : 'text-white/80 hover:bg-white/10'
+                    )
+                  }
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>题目导入</span>
+                </NavLink>
+                <NavLink
+                  to="/links/batch-import"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                      isActive
+                        ? 'bg-white text-primary-600 font-semibold shadow-md'
+                        : 'text-white/80 hover:bg-white/10'
+                    )
+                  }
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>批量导入</span>
+                </NavLink>
+                <NavLink
+                  to="/admin/questions/manage"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                      isActive
+                        ? 'bg-white text-primary-600 font-semibold shadow-md'
+                        : 'text-white/80 hover:bg-white/10'
+                    )
+                  }
+                >
+                  <Database className="w-4 h-4" />
+                  <span>链接题目管理</span>
+                </NavLink>
+                <NavLink
+                  to="/admin/questionnaires/manage"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                      isActive
+                        ? 'bg-white text-primary-600 font-semibold shadow-md'
+                        : 'text-white/80 hover:bg-white/10'
+                    )
+                  }
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>主页题目管理</span>
+                </NavLink>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 数据管理分组，仅管理员可见 */}
         {user?.role === 'admin' && (

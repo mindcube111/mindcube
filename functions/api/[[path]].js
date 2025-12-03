@@ -6,20 +6,23 @@
 import { successResponse, errorResponse, unauthorizedResponse, notFoundResponse } from '../utils/response.js'
 import { verifyAuth, requireAdmin, hashPassword, verifyPassword } from '../utils/auth.js'
 import { generateToken } from '../utils/jwt.js'
-import { UserDB, LinkDB, QuestionnaireDB, NotificationDB, OrderDB } from '../utils/db.js'
+import { UserDB, LinkDB, QuestionnaireDB, NotificationDB, OrderDB, ReportDB } from '../utils/db.js'
 import { getZPayConfig, createZPaySign, verifyCallbackSign, getPackageConfig } from '../utils/zpay.js'
 
 // 初始化数据库实例（KV 会在运行时从环境变量获取）
 function getDB(context) {
-  // 尝试从环境变量获取 KV 绑定
-  // Cloudflare Pages Functions 中，KV 绑定名称应该与 wrangler.toml 中的 binding 名称一致
-  const kv = context.env.DB || context.env.KV_STORE || context.env.KV || {}
-  
-  // 如果 KV 未配置，返回一个模拟的存储（仅用于开发测试）
+  const { env } = context
+  const kv = env.DB || env.KV_STORE || env.KV
+
   if (!kv || typeof kv.get !== 'function') {
-    console.warn('⚠️ KV store not configured, using in-memory storage (data will not persist)')
-    // 返回一个简单的内存存储实现
-    return getInMemoryDB()
+    if (env?.ALLOW_IN_MEMORY_DB === 'true') {
+      if (!hasWarnedInMemory) {
+        console.warn('⚠️ KV 未配置，已启用内存数据库，仅用于开发调试')
+        hasWarnedInMemory = true
+      }
+      return getInMemoryDB()
+    }
+    throw new Error('KV 存储未配置或不可用，请在 wrangler.toml 中绑定 DB')
   }
   
   return {
@@ -28,11 +31,13 @@ function getDB(context) {
     questionnaires: new QuestionnaireDB(kv),
     notifications: new NotificationDB(kv),
     orders: new OrderDB(kv),
+    reports: new ReportDB(kv),
   }
 }
 
 // 简单的内存存储（仅用于开发，数据不会持久化）
 let inMemoryStore = {}
+let hasWarnedInMemory = false
 function getInMemoryDB() {
   const mockKV = {
     get: async (key) => inMemoryStore[key] || null,
@@ -46,6 +51,68 @@ function getInMemoryDB() {
     questionnaires: new QuestionnaireDB(mockKV),
     notifications: new NotificationDB(mockKV),
     orders: new OrderDB(mockKV),
+    reports: new ReportDB(mockKV),
+  }
+}
+
+const DEFAULT_CORS_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+const DEFAULT_CORS_HEADERS = 'Content-Type, Authorization'
+
+function parseAllowedOrigins(env) {
+  const raw = env?.ALLOWED_ORIGINS
+  if (!raw) {
+    return []
+  }
+  return raw
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean)
+}
+
+function buildCorsConfig(request, env) {
+  const headers = new Headers({
+    'Access-Control-Allow-Methods': DEFAULT_CORS_METHODS,
+    'Access-Control-Allow-Headers': DEFAULT_CORS_HEADERS,
+  })
+  const origin = request.headers.get('Origin')
+  if (!origin) {
+    return { headers, allowed: true, hasOrigin: false }
+  }
+
+  const requestOrigin = new URL(request.url).origin
+  const allowedOrigins = parseAllowedOrigins(env).map(value =>
+    value === 'self' ? requestOrigin : value
+  )
+
+  const allowAll = allowedOrigins.includes('*')
+  const allowSameOrigin = origin === requestOrigin && (allowedOrigins.length === 0 || allowedOrigins.includes(requestOrigin))
+  if (allowAll || allowedOrigins.includes(origin) || allowSameOrigin) {
+    headers.set('Access-Control-Allow-Origin', allowAll ? origin : origin)
+    headers.append('Vary', 'Origin')
+    return { headers, allowed: true, hasOrigin: true }
+  }
+
+  return { headers, allowed: false, hasOrigin: true }
+}
+
+function applyCorsHeaders(response, corsHeaders) {
+  corsHeaders.forEach((value, key) => {
+    if (key === 'Vary') {
+      response.headers.append(key, value)
+    } else {
+      response.headers.set(key, value)
+    }
+  })
+  return response
+}
+
+function isHttpsUrl(url) {
+  if (!url) return false
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:'
+  } catch {
+    return false
   }
 }
 
@@ -59,33 +126,42 @@ export async function onRequest(context) {
   const pathSegments = (path || '').split('/').filter(Boolean)
   const method = request.method
 
-  const db = getDB(context)
+  const cors = buildCorsConfig(request, env)
+
+  if (cors.hasOrigin && !cors.allowed) {
+    return new Response('Origin not allowed', {
+      status: 403,
+      headers: cors.headers,
+    })
+  }
+
+  let db
+  try {
+    db = getDB(context)
+  } catch (error) {
+    console.error('KV 初始化失败:', error)
+    const errResponse = errorResponse(error.message || '服务器内部错误', 500, 500)
+    return applyCorsHeaders(errResponse, cors.headers)
+  }
 
   try {
     // CORS 处理
     if (method === 'OPTIONS') {
+      cors.headers.set('Access-Control-Max-Age', '86400')
       return new Response(null, {
         status: 204,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        },
+        headers: cors.headers,
       })
     }
 
     // 路由分发
     const response = await routeHandler(pathSegments, method, request, db, env)
-    
-    // 添加 CORS 头
-    response.headers.set('Access-Control-Allow-Origin', '*')
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-    
-    return response
+
+    return applyCorsHeaders(response, cors.headers)
   } catch (error) {
     console.error('API Error:', error)
-    return errorResponse(error.message || '服务器内部错误', 500, 500)
+    const errResponse = errorResponse(error.message || '服务器内部错误', 500, 500)
+    return applyCorsHeaders(errResponse, cors.headers)
   }
 }
 
@@ -97,13 +173,23 @@ async function routeHandler(pathSegments, method, request, db, env) {
 
   // 支付回调（无需认证）
   if (resource === 'zpay' && action === 'notify') {
-    const config = getZPayConfig(env)
-    return handleZPayNotify(request, db, config)
+    try {
+      const config = getZPayConfig(env)
+      return handleZPayNotify(request, db, config)
+    } catch (error) {
+      console.error('ZPAY 配置错误:', error)
+      return errorResponse('支付配置未完成，请联系管理员', 500, 500)
+    }
   }
 
   // 认证相关路由（不需要认证）
   if (resource === 'auth') {
     return handleAuthRoutes(action, method, request, db, env)
+  }
+
+  // 公开测试相关路由（无需登录，依赖一次性链接）
+  if (resource === 'public-test') {
+    return handlePublicTestRoutes(action, rest, method, request, db)
   }
 
   // 公开的问卷列表（不需要认证）
@@ -280,32 +366,30 @@ async function handleOrderCreate(request, db) {
     const body = await request.json().catch(() => ({}))
     const { outTradeNo, amount, packageId, packageName } = body || {}
 
-    if (!outTradeNo || !amount || !packageId) {
-      return errorResponse('缺少必要参数：outTradeNo / amount / packageId', 400)
+    if (!outTradeNo || !packageId) {
+      return errorResponse('缺少必要参数：outTradeNo / packageId', 400)
+    }
+
+    const existingOrder = await db.orders.getOrderByOutTradeNo(outTradeNo)
+    if (existingOrder) {
+      return errorResponse('订单号已存在，请重新生成', 400)
     }
 
     const pkg = getPackageConfig(packageId)
-    const amountNum = Number(amount)
-
-    if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      return errorResponse('金额不合法', 400)
+    if (!pkg) {
+      return errorResponse('套餐不存在', 400)
     }
 
-    // 如果能找到套餐配置，顺便校验一下价格是否一致（仅做告警，不强制）
-    if (pkg && pkg.price && pkg.price !== amountNum) {
-      console.warn('订单价格与套餐配置不一致', {
-        packageId,
-        configPrice: pkg.price,
-        amountNum,
-      })
+    const amountNum = pkg.price ?? Number(amount)
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      return errorResponse('金额不合法', 400)
     }
 
     const order = await db.orders.createOrder({
       outTradeNo,
       amount: amountNum,
       packageId,
-      packageName: packageName || pkg?.name || '',
-      // userId 将在路由层强制设置，防止前端伪造
+      packageName: packageName || pkg.name,
       status: 'pending',
     })
 
@@ -364,7 +448,8 @@ async function handleLogin(request, db, env) {
   }
 
   // 验证密码（简化版，实际应该比较哈希）
-  if (!verifyPassword(password, user.password)) {
+  const passwordValid = await verifyPassword(password, user.password)
+  if (!passwordValid) {
     return errorResponse('用户名或密码错误', 401)
   }
 
@@ -373,7 +458,7 @@ async function handleLogin(request, db, env) {
   }
 
   // 生成 Token
-  const token = generateToken({
+  const token = await generateToken({
     userId: user.id,
     username: user.username,
     role: user.role,
@@ -417,7 +502,7 @@ async function handleRegister(request, db) {
   const newUser = await db.users.createUser({
     username,
     email,
-    password: hashPassword(password),
+    password: await hashPassword(password),
     name: name || username,
     role: 'user',
     status: 'pending', // 需要管理员审核
@@ -457,7 +542,7 @@ async function handleRefreshToken(request, db, env) {
     return errorResponse('用户不存在', 404)
   }
 
-  const token = generateToken({
+  const token = await generateToken({
     userId: user.id,
     username: user.username,
     role: user.role,
@@ -483,12 +568,14 @@ async function handleChangePassword(request, userId, db) {
     return errorResponse('用户不存在', 404)
   }
 
-  if (!verifyPassword(currentPassword, user.password)) {
+  const passwordValid = await verifyPassword(currentPassword, user.password)
+  if (!passwordValid) {
     return errorResponse('当前密码错误', 400)
   }
 
+  const hashed = await hashPassword(newPassword)
   await db.users.updateUser(userId, {
-    password: hashPassword(newPassword),
+    password: hashed,
   })
 
   return successResponse(null, '密码修改成功')
@@ -599,8 +686,9 @@ async function handleUserRoutes(action, rest, method, request, db, currentUserId
     const userId = action
     const newPassword = Math.random().toString(36).substring(2, 10)
     
+    const hashed = await hashPassword(newPassword)
     await db.users.updateUser(userId, {
-      password: hashPassword(newPassword),
+      password: hashed,
     })
 
     return successResponse({ newPassword }, '密码重置成功')
@@ -627,6 +715,139 @@ async function handleAvailableQuestionnaires(db) {
     }))
 
   return successResponse(available)
+}
+
+/**
+ * 公开测试路由处理（无需登录）
+ * - GET  /api/public-test/:linkId           获取测试题目（校验一次性链接）
+ * - POST /api/public-test/:linkId/submit    提交答卷并标记链接已使用
+ */
+async function handlePublicTestRoutes(action, rest, method, request, db) {
+  // 基础校验：必须携带 linkId
+  if (!action) {
+    return errorResponse('缺少链接ID', 400)
+  }
+
+  const linkId = decodeURIComponent(action)
+
+  // 获取链接信息
+  const link = await db.links.getLinkById(linkId)
+  if (!link) {
+    return notFoundResponse('测试链接不存在')
+  }
+
+  // 校验过期时间
+  if (link.expiredAt) {
+    const now = new Date()
+    const expiredAt = new Date(link.expiredAt)
+    if (expiredAt < now) {
+      return errorResponse('测试链接已过期', 400)
+    }
+  }
+
+  // 获取题库
+  const questionnaireType = link.questionnaireType
+  const questionnaire = questionnaireType
+    ? await db.questionnaires.getQuestionnaire(questionnaireType)
+    : null
+
+  if (!questionnaire || !questionnaire.isPublished) {
+    return errorResponse('问卷不存在或未上架', 400)
+  }
+
+  // 获取题目（从题库中读取真实题目，而不是前端模拟）
+  const allQuestions = Array.isArray(questionnaire.questions)
+    ? questionnaire.questions
+    : []
+
+  // 对外返回时，移除可能包含标准答案或内部计分规则的字段
+  const safeQuestions = allQuestions.map(q => {
+    const {
+      correctAnswer,
+      correctAnswers,
+      score,
+      scoreRule,
+      scoreRules,
+      ...rest
+    } = q
+    return rest
+  })
+
+  // 获取题目（GET）
+  if (rest.length === 0 && method === 'GET') {
+    // 链接如果已经使用过，这里可以根据业务选择是否允许查看
+    if (link.status === 'used') {
+      return errorResponse('该测试链接已被使用', 400)
+    }
+
+    return successResponse({
+      linkId,
+      questionnaireType: questionnaire.type,
+      title: questionnaire.title,
+      description: questionnaire.description,
+      questions: safeQuestions,
+      dimensions: questionnaire.dimensions || [],
+    })
+  }
+
+  // 提交答卷（POST /submit）
+  if (rest[0] === 'submit' && method === 'POST') {
+    // 已使用的链接不允许重复提交
+    if (link.status === 'used') {
+      return errorResponse('该测试链接已被使用，无法重复提交', 400)
+    }
+
+    const body = await request.json().catch(() => ({}))
+    const { answers, meta } = body || {}
+
+    if (!Array.isArray(answers) || answers.length === 0) {
+      return errorResponse('答案数据不能为空', 400)
+    }
+
+    // 简化版计分：如果题目里有 score 字段且答案是数字，可以自行扩展规则
+    let totalScore = null
+    try {
+      totalScore = answers.reduce((sum, answer) => {
+        const question = allQuestions.find(q => q.id === answer.questionId)
+        if (!question) return sum
+
+        // 如果题目本身定义了分值规则，可以在这里解析
+        if (typeof question.score === 'number') {
+          return sum + Number(question.score || 0)
+        }
+
+        return sum
+      }, 0)
+    } catch {
+      totalScore = null
+    }
+
+    // 创建报告
+    const report = await db.reports.createReport({
+      linkId,
+      questionnaireType: questionnaire.type,
+      answers,
+      totalScore,
+      meta: meta || {},
+    })
+
+    // 标记链接为已使用
+    await db.links.updateLink(linkId, {
+      status: 'used',
+      usedAt: new Date().toISOString(),
+      reportId: report.id,
+    })
+
+    return successResponse({
+      reportId: report.id,
+      linkId,
+      questionnaireType: questionnaire.type,
+      totalScore,
+      completedAt: report.completedAt,
+    }, '提交成功')
+  }
+
+  return notFoundResponse('公开测试路由不存在')
 }
 
 /**
@@ -1238,32 +1459,67 @@ async function handleOrderRoutes(action, rest, method, request, db, userId, user
 async function handleZPayRoutes(action, method, request, db, env, userId, userRole) {
   if (action === 'prepare' && method === 'POST') {
     const body = await request.json().catch(() => ({}))
-    const { name, money, outTradeNo, notifyUrl, returnUrl, param } = body || {}
+    const { outTradeNo } = body || {}
 
-    if (!name || !money || !outTradeNo || !notifyUrl || !returnUrl) {
-      return errorResponse('缺少必要参数：name / money / outTradeNo / notifyUrl / returnUrl', 400)
+    if (!outTradeNo) {
+      return errorResponse('缺少必要参数：outTradeNo', 400)
     }
 
-    const amountNum = Number(money)
+    const order = await db.orders.getOrderByOutTradeNo(outTradeNo)
+    if (!order) {
+      return notFoundResponse('订单不存在')
+    }
+
+    if (userRole !== 'admin' && order.userId !== userId) {
+      return unauthorizedResponse('无权访问该订单')
+    }
+
+    if (order.status === 'paid') {
+      return errorResponse('订单已支付或已完成', 400)
+    }
+
+    const pkg = getPackageConfig(order.packageId)
+    if (!pkg) {
+      return errorResponse('套餐不存在', 400)
+    }
+
+    let zpayConfig
+    try {
+      zpayConfig = getZPayConfig(env)
+    } catch (error) {
+      console.error('ZPAY 配置错误:', error)
+      return errorResponse('支付配置未完成，请联系管理员', 500, 500)
+    }
+
+    const notifyUrl = env?.ZPAY_NOTIFY_URL
+    const returnUrl = env?.ZPAY_RETURN_URL
+    if (!notifyUrl || !returnUrl) {
+      console.error('ZPAY 回调地址未配置')
+      return errorResponse('支付回调地址未配置', 500, 500)
+    }
+
+    if (!isHttpsUrl(notifyUrl) || !isHttpsUrl(returnUrl)) {
+      return errorResponse('回调地址必须为 HTTPS', 400)
+    }
+
+    const amountNum = Number(order.amount)
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      return errorResponse('金额不合法', 400)
+      return errorResponse('订单金额无效', 400)
     }
 
-    const zpayConfig = getZPayConfig(env)
     const baseParams = {
-      name,
+      name: pkg.name,
       money: amountNum.toFixed(2),
       type: 'alipay',
       out_trade_no: outTradeNo,
       notify_url: notifyUrl,
       pid: zpayConfig.PID,
-      param: param || '',
+      param: '',
       return_url: returnUrl,
       sign_type: 'MD5',
     }
 
     const sign = await createZPaySign(baseParams, zpayConfig.KEY)
-
     const allParams = {
       ...baseParams,
       sign,
@@ -1274,7 +1530,7 @@ async function handleZPayRoutes(action, method, request, db, env, userId, userRo
         submitUrl: `${zpayConfig.GATEWAY}/submit.php`,
         params: allParams,
       },
-      '支付参数生成成功',
+      '支付参数生成成功'
     )
   }
 

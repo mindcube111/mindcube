@@ -28,6 +28,10 @@ export interface QuestionnaireConfig {
   duration: string
   questions: string
   price: number
+  /**
+   * 主页展示顺序，数字越小越靠前
+   */
+  order?: number
   isCustom?: boolean
 }
 
@@ -40,6 +44,7 @@ export const SYSTEM_QUESTIONNAIRES: Omit<QuestionnaireConfig, 'isCustom'>[] = [
     duration: '约15-20分钟',
     questions: '90题',
     price: 1,
+    order: 1,
   },
   { 
     value: 'MBTI', 
@@ -49,6 +54,7 @@ export const SYSTEM_QUESTIONNAIRES: Omit<QuestionnaireConfig, 'isCustom'>[] = [
     duration: '约20-25分钟',
     questions: '93题',
     price: 1,
+    order: 2,
   },
   { 
     value: 'Holland', 
@@ -58,6 +64,7 @@ export const SYSTEM_QUESTIONNAIRES: Omit<QuestionnaireConfig, 'isCustom'>[] = [
     duration: '约10-15分钟',
     questions: '60题',
     price: 1,
+    order: 3,
   },
 ]
 
@@ -345,10 +352,18 @@ export function getAllQuestionnaires(): QuestionnaireConfig[] {
     return { ...q, isCustom: false }
   })
   
-  return [
+  const all = [
     ...systemQuestionnaires,
     ...customTypes,
   ]
+
+  // 按 order 排序，确保主页和链接生成页展示顺序一致
+  return all.sort((a, b) => {
+    const orderA = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER
+    const orderB = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER
+    if (orderA !== orderB) return orderA - orderB
+    return a.label.localeCompare(b.label, 'zh-CN')
+  })
 }
 
 /**
@@ -524,6 +539,7 @@ export async function updateCustomQuestionnaireAsync(
         features: updates.features !== undefined ? updates.features : currentOverride.features,
         duration: updates.duration !== undefined ? updates.duration : currentOverride.duration,
         price: updates.price !== undefined ? updates.price : currentOverride.price,
+        order: updates.order !== undefined ? updates.order : currentOverride.order,
         questions: updates.questions !== undefined 
           ? (typeof updates.questions === 'string' ? `${updates.questions}题` : updates.questions)
           : currentOverride.questions,
@@ -545,6 +561,7 @@ export async function updateCustomQuestionnaireAsync(
             features: updates.features !== undefined ? updates.features : t.features,
             duration: updates.duration !== undefined ? updates.duration : t.duration,
             price: updates.price !== undefined ? updates.price : t.price,
+            order: updates.order !== undefined ? updates.order : t.order,
             questions: updates.questions !== undefined 
               ? (typeof updates.questions === 'string' ? parseInt(updates.questions) : updates.questions)
               : t.questions,

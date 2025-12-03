@@ -36,11 +36,11 @@ git remote -v
 # 删除旧的远程配置
 git remote remove origin
 
-# 添加新的远程仓库（将 YOUR_TOKEN 替换为你的 token，USERNAME 替换为你的 GitHub 用户名）
-git remote add origin https://YOUR_TOKEN@github.com/mindcube111/mindcube.git
+# 添加新的远程仓库（不要在 URL 中写入 Token）
+git remote add origin https://github.com/mindcube111/mindcube.git
 
-# 或者使用用户名+token的方式（推荐，更安全）
-git remote add origin https://USERNAME:YOUR_TOKEN@github.com/mindcube111/mindcube.git
+# 启用 Git Credential Manager（Windows 默认可用）
+git config --global credential.helper manager-core
 ```
 
 ### 步骤 3：测试推送
@@ -53,6 +53,8 @@ git push origin master
 ```powershell
 git push origin main
 ```
+
+> 首次推送会弹出凭据窗口：用户名填写 GitHub 账号，密码填写刚才生成的 Personal Access Token。Git Credential Manager 会安全保存该 Token，下次无需重复输入。
 
 ---
 
@@ -299,4 +301,9 @@ git push origin master --dry-run
 ---
 
 **注意**：选择一种方案后，记得删除或注释掉其他方案，避免混淆。
+
+
+
+
+
 

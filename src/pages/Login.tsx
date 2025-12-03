@@ -1,8 +1,10 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import type React from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { LogIn, Lock, User, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import ArithmeticCaptchaField from '@/components/ArithmeticCaptchaField'
+import { useArithmeticCaptcha } from '@/hooks/useArithmeticCaptcha'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -12,16 +14,12 @@ export default function Login() {
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [captchaAnswer, setCaptchaAnswer] = useState('')
-  const [captchaA, setCaptchaA] = useState(() => Math.floor(Math.random() * 5) + 3) // 3-7
-  const [captchaB, setCaptchaB] = useState(() => Math.floor(Math.random() * 5) + 2) // 2-6
-  const captchaResult = useMemo(() => captchaA * captchaB, [captchaA, captchaB])
+  const { expression: captchaExpression, result: captchaResult, regenerate } = useArithmeticCaptcha()
 
-  // 重新生成验证码
-  const regenerateCaptcha = useCallback(() => {
-    setCaptchaA(Math.floor(Math.random() * 5) + 3)
-    setCaptchaB(Math.floor(Math.random() * 5) + 2)
+  const handleRefreshCaptcha = useCallback(() => {
+    regenerate()
     setCaptchaAnswer('')
-  }, [])
+  }, [regenerate])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,7 +28,7 @@ export default function Login() {
     if (Number(captchaAnswer) !== captchaResult) {
       setError('结果不对，再试一次哦')
       setCaptchaAnswer('')
-      regenerateCaptcha()
+      handleRefreshCaptcha()
       return
     }
     setIsSubmitting(true)
@@ -112,25 +110,13 @@ export default function Login() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                计算结果： {captchaA} × {captchaB} =
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
+            <ArithmeticCaptchaField
                   value={captchaAnswer}
-                  onChange={(e) => setCaptchaAnswer(e.target.value)}
-                  className="input pr-24"
-                  placeholder="请输入结果"
-                  required
+              onChange={setCaptchaAnswer}
+              expression={captchaExpression}
+              onRefresh={handleRefreshCaptcha}
                   disabled={isSubmitting || isLoading}
                 />
-                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                  防机器人，请填写结果
-                </span>
-              </div>
-            </div>
 
             <div className="flex items-center justify-between">
               <label className="flex items-center">
@@ -161,6 +147,14 @@ export default function Login() {
                   登录
                 </>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="w-full border border-gray-200 text-gray-600 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors duration-200"
+            >
+              回到主页
             </button>
           </form>
 

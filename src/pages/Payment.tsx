@@ -25,6 +25,7 @@ export default function Payment() {
   const [questionnaireType, setQuestionnaireType] = useState<string | undefined>(undefined)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showConfig, setShowConfig] = useState(false)
 
   // 从 URL 参数或路由 state 中预填套餐信息
   useEffect(() => {
@@ -208,12 +209,27 @@ export default function Payment() {
             </p>
           </div>
 
+          <div className="mb-6 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-gray-600 dark:text-gray-300">
+              为避免误操作，支付配置已默认隐藏。仅在需要调整或测试支付流程时再展开。
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowConfig((prev) => !prev)}
+              className="inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+            >
+              {showConfig ? '隐藏配置' : '显示配置'}
+            </button>
+          </div>
+
           {error && (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
             </div>
           )}
 
+          {showConfig && (
+            <>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -340,6 +356,14 @@ export default function Payment() {
 
           {/* 用于真正提交到 ZPAY 的隐藏表单 */}
           <form ref={formRef} className="hidden" />
+            </>
+          )}
+
+          {!showConfig && (
+            <div className="text-center text-sm text-gray-500 dark:text-gray-400">
+              当前支付配置已隐藏。如需配置请点击“显示配置”按钮。
+            </div>
+          )}
         </div>
       </div>
     </PageTransition>

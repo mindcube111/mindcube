@@ -1,8 +1,10 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { User, Mail, Lock, ShieldCheck } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
+import ArithmeticCaptchaField from '@/components/ArithmeticCaptchaField'
+import { useArithmeticCaptcha } from '@/hooks/useArithmeticCaptcha'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -18,16 +20,12 @@ export default function Register() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [captchaAnswer, setCaptchaAnswer] = useState('')
-  const [captchaA, setCaptchaA] = useState(() => Math.floor(Math.random() * 5) + 3) // 3-7
-  const [captchaB, setCaptchaB] = useState(() => Math.floor(Math.random() * 5) + 2) // 2-6
-  const captchaResult = useMemo(() => captchaA * captchaB, [captchaA, captchaB])
+  const { expression: captchaExpression, result: captchaResult, regenerate } = useArithmeticCaptcha()
 
-  // 重新生成验证码
-  const regenerateCaptcha = useCallback(() => {
-    setCaptchaA(Math.floor(Math.random() * 5) + 3)
-    setCaptchaB(Math.floor(Math.random() * 5) + 2)
+  const handleRefreshCaptcha = useCallback(() => {
+    regenerate()
     setCaptchaAnswer('')
-  }, [])
+  }, [regenerate])
 
   const handleChange = (field: keyof typeof formData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -38,7 +36,7 @@ export default function Register() {
     if (Number(captchaAnswer) !== captchaResult) {
       await showAlert('验证失败', '结果不对，再试一次哦', 'warning')
       setCaptchaAnswer('')
-      regenerateCaptcha()
+      handleRefreshCaptcha()
       return
     }
     if (formData.password !== formData.confirmPassword) {
@@ -264,24 +262,12 @@ MIND CUBE 隐私协议
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                计算结果： {captchaA} × {captchaB} =
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
+            <ArithmeticCaptchaField
                   value={captchaAnswer}
-                  onChange={(e) => setCaptchaAnswer(e.target.value)}
-                  className="input pr-24"
-                  placeholder="请输入结果"
-                  required
-                />
-                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                  防机器人，请填写结果
-                </span>
-              </div>
-            </div>
+              onChange={setCaptchaAnswer}
+              expression={captchaExpression}
+              onRefresh={handleRefreshCaptcha}
+            />
 
             <div className="flex items-start gap-2 text-sm text-gray-600">
               <input
@@ -330,11 +316,14 @@ MIND CUBE 隐私协议
             </button>
           </form>
 
-          <div className="mt-6 text-sm text-gray-600 text-center">
+          <div className="mt-6 text-sm text-gray-600 text-center space-y-2">
             已有账号？
             <Link to="/login" className="text-secondary-600 hover:underline ml-1">
               返回登录
             </Link>
+            <p className="text-sm font-semibold text-gray-500">
+              如需注册请联系微信：<span className="text-primary-600">Mindcube111</span>
+            </p>
           </div>
         </div>
       </div>
